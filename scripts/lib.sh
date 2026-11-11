@@ -1,11 +1,13 @@
 # shellcheck shell=bash
 # What the scripts share; they source it.
 #
-# A table, ROCK/releases.json, holds the versions of ROCK by version, in the
-# format tt reads from TT_<ROCK>_RELEASES. A version is published as the
+# A table, ROCK/releases.json, holds the versions of ROCK by version: for
+# wasm and emmylua in the format tt reads from TT_<ROCK>_RELEASES, for a
+# package (a tt package, ROCK/package.json describing it) the ref of its
+# repository each version is built from. A version is published as the
 # release ROCK-VERSION-REVISION, REVISION being its rock_revision: a rock
-# for each of its platforms, ROCK-VERSION-REVISION.ARCH.rock, and the
-# rockspec, ROCK-VERSION-REVISION.rockspec. The branch index holds
+# for each of its archs, ROCK-VERSION-REVISION.ARCH.rock, and the rockspec,
+# ROCK-VERSION-REVISION.rockspec. The branch index holds
 # tt-rocks-index.json, which lists the published releases.
 #
 # The scripts run gh against $GH_REPO, and git against $ROCKS_REMOTE,
@@ -66,31 +68,69 @@ tag() {
 	printf '%s-%s-%s\n' "$1" "$2" "$3"
 }
 
+# kind ROCK prints the kind of ROCK: package for a tt package, which
+# ROCK/package.json describes and tt package pack packs, or wasm or emmylua,
+# which tt wasm rock and tt emmylua rock pack.
+kind() {
+	if [ -f "$root/$1/package.json" ]; then
+		echo package
+		return
+	fi
+	case $1 in
+	wasm | emmylua) echo "$1" ;;
+	*) die "unknown rock: $1" ;;
+	esac
+}
+
+# package ROCK FIELD prints FIELD of ROCK/package.json, empty when it has
+# none.
+package() {
+	jq -r --arg f "$2" '.[$f] // "" | tostring' "$root/$1/package.json"
+}
+
+# source_rock ROCK succeeds when the package ROCK publishes its source rock
+# too.
+source_rock() {
+	[ "$(kind "$1")" = package ] &&
+		jq -e '.source_rock == true' "$root/$1/package.json" > /dev/null
+}
+
 # upstream ROCK prints the GitHub repository ROCK is built or packed from.
 upstream() {
-	case $1 in
+	case $(kind "$1") in
 	wasm) echo tarantool/tarantool-wasm-rs ;;
 	emmylua) echo EmmyLuaLs/emmylua-analyzer-rust ;;
-	*) die "unknown rock: $1" ;;
+	package)
+		local url
+		url=$(package "$1" repository)
+		[[ $url =~ ^https://github\.com/([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)$ ]] ||
+			die "$1/package.json: the repository $url is not https://github.com/OWNER/NAME"
+		echo "${BASH_REMATCH[1]}"
+		;;
 	esac
 }
 
 # from_source ROCK VERSION succeeds when VERSION is built here from the
 # source at its ref, for each target of ROCK/targets.json, rather than
 # packed from the assets of an upstream release: a version without
-# platforms.
+# platforms, and every version of a package.
 from_source() {
 	jq -e --arg v "$2" '(.[$v].platforms // []) == []' "$(table "$1")" > /dev/null
 }
 
 # archs ROCK VERSION prints the LuaRocks archs VERSION has rocks for, one
 # per line, sorted: those of its targets when it is built from source, of
-# its platforms otherwise.
+# its platforms otherwise. The rock of a target of arch all is the .all rock
+# of a package with no native file; a package publishing its source rock
+# has one of arch src too.
 archs() {
 	local file
 	file=$(table "$1")
 	if from_source "$1" "$2"; then
 		jq -r '.targets[].arch' "$root/$1/targets.json"
+		if source_rock "$1"; then
+			echo src
+		fi
 	else
 		jq -r --arg v "$2" '.[$v].platforms[]
 			| .rock_arch // (({linux: "linux", darwin: "macosx"}[.goos] // .goos) + "-"
@@ -104,7 +144,7 @@ split_tag() {
 	local rock key
 	for rock in $(rocks); do
 		key=${1#"$rock"-}
-		if [ "$key" != "$1" ] && [[ $key =~ ^[^-]+-[0-9]+$ ]]; then
+		if [ "$key" != "$1" ] && [[ $key =~ ^[0-9][^-]*-[0-9]+$ ]]; then
 			printf '%s %s\n' "$rock" "$key"
 			return 0
 		fi

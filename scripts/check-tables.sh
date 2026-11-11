@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Check the tables: each entry is well formed, and, when BASE (a git commit
+# Check the tables, and the descriptions and targets of the packages: each
+# entry is well formed, and, when BASE (a git commit
 # of this repository) is given, no version-revision the index FILE has is
 # changed from what BASE holds: a published release never changes, so a
 # new build of a version is a new rock_revision.
@@ -79,10 +80,71 @@ check "$root/wasm/targets.json" '
 	| "wasm/targets.json: " + .'
 
 # The archs are those tt packs and the index names.
-for rock in $(rocks); do
+for rock in wasm emmylua; do
 	bad=$(jq -r '.targets[].arch | select(test("^(linux|macosx)-(x86_64|aarch64)$") | not)' \
 		"$root/$rock/targets.json")
 	[ -z "$bad" ] || problems+=("$rock/targets.json: no such arch: $bad")
+done
+
+# Every other rock is a package: its table names the ref of each version,
+# package.json the repository and the Tarantool its builds use, and
+# targets.json the archs, or the one arch all of a package with no native
+# file.
+for rock in $(rocks); do
+	case $rock in
+	wasm | emmylua)
+		[ ! -e "$root/$rock/package.json" ] ||
+			problems+=("$rock/package.json: $rock is packed by tt $rock rock, not a package")
+		continue
+		;;
+	esac
+	if [ ! -f "$root/$rock/package.json" ]; then
+		problems+=("$rock: no package.json: a rock here is wasm, emmylua or a tt package")
+		continue
+	fi
+	[[ $rock =~ ^[a-z][a-z0-9-]*$ ]] ||
+		problems+=("$rock: not the name of a tt package: lowercase letters, digits and dashes, from a letter")
+
+	check "$root/$rock/releases.json" "$common"'
+		  (if ($e.ref | str) then empty else "\($at): no ref to build" end),
+		  (($e | keys) - ["version", "rock_revision", "ref"] | .[] | "\($at): no such field: \(.)")
+		end | "'"$rock"'/releases.json: " + .'
+
+	check "$root/$rock/package.json" '
+		def relpath: type == "string" and test("^[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)*$")
+			and (split("/") | all(. != "." and . != ".."));
+		if type != "object" then "not an object" else
+		(if (.repository | type) == "string"
+			and (.repository | test("^https://github\\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"))
+			and (.repository | test("\\.git$") | not) then empty
+		 else "repository is not https://github.com/OWNER/NAME" end),
+		(if .path == null or (.path | relpath) then empty
+		 else "path is not a relative path in the repository" end),
+		(if (.tarantool | type) == "string" and (.tarantool | test("^[0-9]+([.][0-9]+){0,2}$")) then empty
+		 else "tarantool is not a Tarantool release such as 3, 3.5 or 3.5.1" end),
+		(if .source_rock == null or (.source_rock | type) == "boolean" then empty
+		 else "source_rock is no boolean" end),
+		(keys - ["repository", "path", "tarantool", "source_rock"] | .[] | "no such field: \(.)")
+		end | "'"$rock"'/package.json: " + .'
+
+	check "$root/$rock/targets.json" '
+		def str: type == "string" and length > 0;
+		if type != "object" then "not an object"
+		elif (.targets | type) == "array" and (.targets | length) > 0 then
+			(.targets[] | select(([.arch, .os] | all(str) | not) or (.container | type) != "string")
+			 | "the target \(.arch) lacks a field"),
+			(.targets[] | (keys - ["arch", "os", "container"] | .[]) as $k
+			 | "the target \(.arch) has no such field: \($k)"),
+			(.targets[].arch | select(type == "string")
+			 | select(test("^((linux|macosx)-(x86_64|aarch64)|all)$") | not)
+			 | "no such arch: \(.)"),
+			(if ([.targets[].arch] | unique | length) == (.targets | length) then empty
+			 else "an arch is listed twice" end),
+			(if ([.targets[].arch] | index("all")) == null or (.targets | length) == 1 then empty
+			 else "a target of the arch all is the only one" end),
+			(keys - ["targets"] | .[] | "no such field: \(.)")
+		else "no targets" end
+		| "'"$rock"'/targets.json: " + .'
 done
 
 # Against BASE: an indexed version-revision is as BASE has it.

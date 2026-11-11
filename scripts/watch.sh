@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
-# Open a pull request for each release of tarantool-wasm-rs and EmmyLua the
-# tables lack, adding it with scripts/entry.sh and scripts/add.sh.
+# Open a pull request for each release of tarantool-wasm-rs and EmmyLua, and
+# each tag vMAJOR.MINOR.PATCH of the repository of a package, the tables
+# lack, adding it with scripts/entry.sh and scripts/add.sh.
 #
 # Usage: scripts/watch.sh [--dry-run]
 #
 # A release is new when it is newer than the newest version of the table
 # that is an upstream release, packed from its assets or built from its tag
 # (EmmyLua snapshots built from a commit do not count); with no such
-# version, only the latest release is. Drafts and pre-releases are not. A release with a pull request already, open or closed, is left
+# version, only the latest release is. Drafts and pre-releases are not, nor
+# the tags of a package with more than MAJOR.MINOR.PATCH (v1.2.0-rc1); its
+# tags are read by git, so a tag with no GitHub release counts. A release with a pull request already, open or closed, is left
 # alone: a closed one was declined. A release scripts/entry.sh cannot make
 # an entry of (an asset is missing, say) is reported and tried again on the
 # next run.
@@ -30,17 +33,22 @@ fi
 # prefix ROCK prints what the tag of an upstream release puts before its
 # version.
 prefix() {
-	case $1 in
-	wasm) echo v ;;
+	case $(kind "$1") in
+	wasm | package) echo v ;;
 	*) echo ;;
 	esac
 }
 
-# releases ROCK prints the versions of the releases of ROCK upstream.
+# releases ROCK prints the versions of the releases of ROCK upstream: of the
+# tags of the repository of a package.
 releases() {
-	gh release list -R "$(upstream "$1")" --exclude-drafts --exclude-pre-releases \
-		--limit 100 --json tagName --jq '.[].tagName' |
-		sed -n "s/^$(prefix "$1")\([0-9]\{1,\}[.][0-9]\{1,\}[.][0-9]\{1,\}\)$/\1/p"
+	if [ "$(kind "$1")" = package ]; then
+		git ls-remote --tags --refs "$(package "$1" repository)" 'refs/tags/v*' |
+			sed 's|^[0-9a-f]*[[:space:]]*refs/tags/||'
+	else
+		gh release list -R "$(upstream "$1")" --exclude-drafts --exclude-pre-releases \
+			--limit 100 --json tagName --jq '.[].tagName'
+	fi | sed -n "s/^$(prefix "$1")\([0-9]\{1,\}[.][0-9]\{1,\}[.][0-9]\{1,\}\)$/\1/p"
 }
 
 # floor ROCK prints the newest version of the table that is an upstream
@@ -57,7 +65,7 @@ newer() {
 }
 
 new=()
-for rock in wasm emmylua; do
+for rock in $(rocks); do
 	known=$(versions "$rock")
 	low=$(floor "$rock")
 	mapfile -t found < <(releases "$rock" | sort -V)
@@ -99,7 +107,12 @@ for item in "${new[@]}"; do
 	fi
 
 	url=https://github.com/$(upstream "$rock")/releases/tag/$(prefix "$rock")$version
-	if jq -e 'all(.[]; (.platforms // []) == [])' <<<"$entry" > /dev/null; then
+	review="the release"
+	if [ "$(kind "$rock")" = package ]; then
+		url=https://github.com/$(upstream "$rock")/tree/v$version
+		review="the code of the tag"
+		how="Built here from the tag for the targets of \`$rock/targets.json\` by \`tt package pack\`, which writes the rockspec from the manifest of the package."
+	elif jq -e 'all(.[]; (.platforms // []) == [])' <<<"$entry" > /dev/null; then
 		how="Built here from the tag of the release for the targets of \`$rock/targets.json\`; the md5 is that of the source archive the rockspec names."
 	else
 		how="Packed from the assets of the release, checked against the sha256 GitHub reports for them; the md5 is that of the source archive the rockspec names."
@@ -117,7 +130,7 @@ for item in "${new[@]}"; do
 	cat > "$work/body" <<-EOF
 		Adds $rock $version, $url, to \`$rock/releases.json\`.
 
-		$how Review the release before merging: once this is merged, the publish workflow publishes \`$rock-$version-1\`.
+		$how Review $review before merging: once this is merged, the publish workflow publishes \`$rock-$version-1\`.
 
 		Opened by the watch workflow. Pull requests it opens run no checks; close and reopen this one to run them.
 	EOF

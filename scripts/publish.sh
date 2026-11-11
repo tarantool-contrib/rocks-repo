@@ -1,15 +1,18 @@
 #!/usr/bin/env bash
 # Publish VERSION of ROCK as the release ROCK-VERSION-REVISION, REVISION
-# being its rock_revision in ROCK/releases.json: pack its rocks with tt,
-# create the release as a draft, upload the rocks and the rockspec, check
-# what GitHub holds, publish.
+# being its rock_revision in ROCK/releases.json: pack its rocks with tt, or
+# take those of a package from its builds, create the release as a draft,
+# upload the rocks and the rockspec, check what GitHub holds, publish.
 #
 # Usage: scripts/publish.sh [--pack-only] ROCK VERSION [BUILDS]
 #
-# BUILDS holds the builds of a version built from source, a tar per target,
-# as the build jobs of the publish workflow leave them:
+# BUILDS holds the builds of a version built from source, as the build jobs
+# of the publish workflow leave them: for emmylua and wasm a tar per target,
 # BUILDS/ROCK-VERSION-ARCH.tar, of the four programs for emmylua, of the one
-# module for wasm.
+# module for wasm; for a package a directory per arch, BUILDS/TAG.ARCH,
+# TAG being ROCK-VERSION-REVISION, holding the rock TAG.ARCH.rock and the
+# rockspec TAG.rockspec tt package pack wrote (scripts/pack-package.sh) and
+# nothing else.
 #
 # --pack-only packs and checks the rocks and stops: nothing is published.
 #
@@ -19,7 +22,10 @@
 # and the release made anew.
 #
 # $TT, default tt, packs the rocks: tt wasm rock and tt emmylua rock, with
-# the tables of this repository.
+# the tables of this repository. The rocks of a package are not packed
+# here, and nothing of the package runs: they are only checked to be those
+# of the archs the tables name, each with the same rockspec, of the package
+# and the version-revision, which the build wrote beside it too.
 # shellcheck source=lib.sh
 source "$(dirname "$0")/lib.sh"
 
@@ -37,6 +43,7 @@ tt=${TT:-tt}
 export TT_WASM_RELEASES=$root/wasm/releases.json
 export TT_EMMYLUA_RELEASES=$root/emmylua/releases.json
 
+kind=$(kind "$rock")
 revision=$(revision "$rock" "$version")
 tag=$(tag "$rock" "$version" "$revision")
 mapfile -t archs < <(archs "$rock" "$version")
@@ -70,7 +77,31 @@ pack=$work/pack
 dist=$work/dist
 mkdir -p "$pack" "$dist"
 
-if from_source "$rock" "$version"; then
+if [ "$kind" = package ]; then
+	[ -n "$builds" ] || die "$rock $version is built from source: name the directory of the builds"
+	for arch in "${archs[@]}"; do
+		build=$builds/$tag.$arch
+		[ -d "$build" ] || die "no build of $rock $version for $arch: $build"
+		have=$(cd "$build" && find . -mindepth 1 | sed 's|^\./||' | sort)
+		want=$(printf '%s\n' "$tag.$arch.rock" "$tag.rockspec" | sort)
+		[ "$have" = "$want" ] ||
+			die "the build $build holds"$'\n'"$have"$'\n'"rather than"$'\n'"$want"
+		for file in "$build/$tag.$arch.rock" "$build/$tag.rockspec"; do
+			if [ ! -f "$file" ] || [ -L "$file" ]; then
+				die "$file is not a file"
+			fi
+		done
+		cp "$build/$tag.$arch.rock" "$pack/"
+	done
+	# A build of an arch the tables do not name is not a rock to leave out
+	# silently: the targets and the builds disagree.
+	for build in "$builds/$tag".*; do
+		[ -e "$build" ] || continue
+		arch=${build##*/"$tag".}
+		printf '%s\n' "${archs[@]}" | grep -qxF "$arch" ||
+			die "a build of $rock $version for $arch, which $rock/targets.json does not name: $build"
+	done
+elif from_source "$rock" "$version"; then
 	[ -n "$builds" ] || die "$rock $version is built from source: name the directory of the builds"
 	for arch in "${archs[@]}"; do
 		build=$builds/$rock-$version-$arch.tar
@@ -113,6 +144,11 @@ unzip -p "$dist/$tag.${archs[0]}.rock" "$tag.rockspec" > "$dist/$tag.rockspec"
 for arch in "${archs[@]}"; do
 	unzip -p "$dist/$tag.$arch.rock" "$tag.rockspec" | cmp -s - "$dist/$tag.rockspec" ||
 		die "the rockspec of $tag.$arch.rock differs from that of $tag.${archs[0]}.rock"
+	# And the one tt package pack wrote beside the rock.
+	if [ "$kind" = package ]; then
+		cmp -s "$builds/$tag.$arch/$tag.rockspec" "$dist/$tag.rockspec" ||
+			die "the rockspec of the build for $arch differs from the one in the rocks"
+	fi
 done
 grep -qxF "package = \"$rock\"" "$dist/$tag.rockspec" ||
 	die "$tag.rockspec is not of the package $rock"
@@ -146,15 +182,29 @@ repo=${GH_REPO:-}
 commit=${GITHUB_SHA:-$(git -C "$root" rev-parse HEAD 2> /dev/null || true)}
 notes=$work/notes
 {
-	echo "\`$rock\` $version-$revision: binary rocks for tt 3, one per platform."
-	echo
-	if from_source "$rock" "$version"; then
-		ref=$(jq -r --arg v "$version" '.[$v].ref' "$(table "$rock")")
+	ref=$(jq -r --arg v "$version" '.[$v].ref // empty' "$(table "$rock")")
+	if [ "$kind" = package ]; then
+		path=$(package "$rock" path)
+		packed="\`tt package pack --format rock\`"
+		if source_rock "$rock"; then
+			packed+=", the source rock by \`--format rock-src\`"
+		fi
+		echo "\`$rock\` $version-$revision: rocks of the tt package for tt 3, of the archs"
+		printf "\`%s\`\n" "${archs[@]}" | paste -sd ' ' | sed "s/\` \`/\`, \`/g; s/\$/./"
+		echo
+		echo "Built from [$(upstream "$rock")@$ref]($(package "$rock" repository)/tree/$ref)${path:+, the project in \`$path\`,}"
+		echo "with Tarantool $(package "$rock" tarantool) for the targets of \`$rock/targets.json\`"
+		echo "by the publish workflow, and packed there by $packed."
+	elif from_source "$rock" "$version"; then
+		echo "\`$rock\` $version-$revision: binary rocks for tt 3, one per platform."
+		echo
 		rust=$(jq -r '.rust // empty' "$root/$rock/targets.json")
 		echo "Built from [$(upstream "$rock")@$ref](https://github.com/$(upstream "$rock")/tree/$ref)"
 		echo "${rust:+with Rust $rust }for the targets of \`$rock/targets.json\` by the publish"
 		echo "workflow, and packed by \`tt $rock rock --from\`."
 	else
+		echo "\`$rock\` $version-$revision: binary rocks for tt 3, one per platform."
+		echo
 		echo "Packed by \`tt $rock rock\` from the assets of the upstream release, each"
 		echo "checked against the sha256 \`$rock/releases.json\` holds it to."
 	fi

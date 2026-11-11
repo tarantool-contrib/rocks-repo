@@ -5,21 +5,29 @@
 # Usage: scripts/plan.sh FILE
 #
 #   {
-#     "publish": [{"rock": "emmylua", "version": "0.30.0pre1", "revision": 1,
-#                  "tag": "emmylua-0.30.0pre1-1", "release": "none",
-#                  "source": true}],
-#     "builds": [{"rock": "emmylua", "version": "0.30.0pre1", "ref": "599c…",
-#                 "arch": "linux-x86_64", "os": "ubuntu-22.04",
+#     "publish": [{"rock": "emmylua", "kind": "emmylua", "version": "0.30.0pre1",
+#                  "revision": 1, "tag": "emmylua-0.30.0pre1-1",
+#                  "release": "none", "source": true}],
+#     "builds": [{"rock": "emmylua", "kind": "emmylua", "version": "0.30.0pre1",
+#                 "ref": "599c…", "arch": "linux-x86_64", "os": "ubuntu-22.04",
 #                 "target": "x86_64-unknown-linux-gnu", "glibc": "2.17",
-#                 "rust": "1.99.1"}]
+#                 "rust": "1.99.1"},
+#                {"rock": "hello", "kind": "package", "version": "1.2.0",
+#                 "revision": 1, "ref": "v1.2.0", "arch": "src",
+#                 "os": "ubuntu-24.04", "container": "",
+#                 "repository": "example/hello", "tarantool": "3.5.2"}]
 #   }
 #
-# release is the state of the release of the tag: none, draft (a failed
-# run left it; seen only with push access) or published (its entry is
-# missing: it needs indexing alone). A version built from source needs a
-# build of each target of ROCK/targets.json unless its release is
-# published: a build is the target, the other fields of targets.json, and
-# the rock, version and ref. What is to be done is also reported on stderr.
+# kind is that of scripts/lib.sh. release is the state of the release of the
+# tag: none, draft (a failed run left it; seen only with push access) or
+# published (its entry is missing: it needs indexing alone). A version built
+# from source needs a build of each target of ROCK/targets.json unless its
+# release is published: a build is the target, the other fields of
+# targets.json, and the rock, kind, version and ref. A build of a package
+# also has the revision, the GitHub repository and the Tarantool of
+# ROCK/package.json; a package that publishes its source rock has one more
+# build, of the arch src, on the os and container of its first target. What
+# is to be done is also reported on stderr.
 # shellcheck source=lib.sh
 source "$(dirname "$0")/lib.sh"
 
@@ -45,10 +53,11 @@ for rock in $(rocks); do
 		draft) say "$tag: a draft: delete it and publish anew" ;;
 		*) say "$tag: publish it" ;;
 		esac
-		items+=("$(jq -nc --arg rock "$rock" --arg version "$version" \
-			--argjson revision "$revision" --arg tag "$tag" --arg state "$state" \
-			--argjson source "$source" '{rock: $rock, version: $version,
-				revision: $revision, tag: $tag, release: $state, source: $source}')")
+		items+=("$(jq -nc --arg rock "$rock" --arg kind "$(kind "$rock")" \
+			--arg version "$version" --argjson revision "$revision" --arg tag "$tag" \
+			--arg state "$state" --argjson source "$source" '{rock: $rock, kind: $kind,
+				version: $version, revision: $revision, tag: $tag, release: $state,
+				source: $source}')")
 	done
 done
 
@@ -59,11 +68,23 @@ fi
 builds=()
 for item in "${items[@]}"; do
 	jq -e '.source and .release != "published"' <<<"$item" > /dev/null || continue
-	read -r rock version < <(jq -r '"\(.rock) \(.version)"' <<<"$item")
+	read -r rock kind version revision < <(jq -r '"\(.rock) \(.kind) \(.version) \(.revision)"' <<<"$item")
 	ref=$(jq -r --arg v "$version" '.[$v].ref' "$(table "$rock")")
-	builds+=("$(jq -c --arg rock "$rock" --arg version "$version" --arg ref "$ref" '
+	extra='{}'
+	if [ "$kind" = package ]; then
+		extra=$(jq -nc --argjson revision "$revision" --arg repository "$(upstream "$rock")" \
+			--arg tarantool "$(package "$rock" tarantool)" --argjson src "$(
+				source_rock "$rock" && echo true || echo false)" \
+			'{revision: $revision, repository: $repository, tarantool: $tarantool,
+			  src: $src}')
+	fi
+	builds+=("$(jq -c --arg rock "$rock" --arg kind "$kind" --arg version "$version" \
+		--arg ref "$ref" --argjson extra "$extra" '
 		del(.targets) as $common
-		| .targets[] | $common + . + {rock: $rock, version: $version, ref: $ref}
+		| (.targets | map($common + . + {rock: $rock, kind: $kind, version: $version,
+			ref: $ref} + ($extra | del(.src))))
+		| . + (if $extra.src then [.[0] + {arch: "src"}] else [] end)
+		| .[]
 	' "$root/$rock/targets.json")")
 done
 

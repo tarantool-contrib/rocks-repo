@@ -9,18 +9,38 @@
 #                                         from its assets
 #   scripts/entry.sh emmylua VERSION REF  EmmyLua at REF, built from source
 #                                         here and published as VERSION
+#   scripts/entry.sh PACKAGE VERSION      a tt package at the tag vVERSION
+#                                         of its repository, built here
+#   scripts/entry.sh PACKAGE VERSION REF  a tt package at REF, built here
+#                                         and published as VERSION
 #
 # A version packed from upstream assets lists them by platform with the
 # sha256 GitHub publishes for them; one built from source names the ref
 # instead, and is built for the targets of ROCK/targets.json. The source of
 # a rockspec is what the lock of a project records the md5 of; nothing
 # installs from it. For wasm it is the SDK archive of the release, for
-# EmmyLua the GitHub archive of the ref.
+# EmmyLua the GitHub archive of the ref. tt package pack writes the
+# rockspec of a package, and names its version: the tag v* at the ref, as a
+# LuaRocks version (v1.2.0-rc1 is 1.2.0.rc1), or the VERSION file; a build
+# of another version than VERSION fails.
 set -euo pipefail
 
 rock=$1
 version=$2
 ref=${3:-}
+root=$(cd "$(dirname "$0")/.." && pwd)
+
+if [ -f "$root/$rock/package.json" ]; then
+	if [ -z "$ref" ]; then
+		ref=v$version
+		url=$(jq -r .repository "$root/$rock/package.json")
+		git ls-remote --exit-code --tags "$url" "refs/tags/$ref" > /dev/null ||
+			{ echo "$url has no tag $ref" >&2; exit 1; }
+	fi
+	jq -n --arg v "$version" --arg ref "$ref" \
+		'{($v): {version: $v, rock_revision: 1, ref: $ref}}'
+	exit 0
+fi
 
 md5() {
 	curl -sSfL "$1" | md5sum | cut -d' ' -f1
