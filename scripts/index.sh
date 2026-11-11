@@ -5,9 +5,11 @@
 #
 # An entry lists the rockspec and the rock of each arch of the release,
 # with their URLs, the sha256 GitHub computed for them on upload (the
-# digests of the assets) and the sizes of the rocks. A version-revision the
-# index has already is refused: an entry, once written, never changes. The
-# file is written deterministically: keys of rocks and versions sorted,
+# digests of the assets) and the sizes of the rocks. An arch is a platform,
+# OS-CPU, or all for an .all rock, or src for a source rock. A
+# version-revision the index has already is refused: an entry, once
+# written, never changes, but for being yanked (scripts/yank.sh). The file
+# is written deterministically: keys of rocks and versions sorted,
 # artifacts by arch, entries in the order of the format.
 # shellcheck source=lib.sh
 source "$(dirname "$0")/lib.sh"
@@ -46,7 +48,7 @@ for tag; do
 				| map({arch: .name[($tag | length) + 1:-5], url: link, sha256: sha, size})
 				| sort_by(.arch))
 		  } end
-		| if all(.artifacts[]; .arch | test("^[a-z0-9_]+-[a-z0-9_]+$")) then .
+		| if all(.artifacts[]; .arch | test("^([a-z0-9_]+-[a-z0-9_]+|all|src)$")) then .
 		  else error("\($tag) has a rock of no arch: \([.artifacts[].arch] | join(", "))") end
 	' <<<"$view" 2>&1) || die "$tag: ${entry#jq: error (at <stdin>:*): }"
 
