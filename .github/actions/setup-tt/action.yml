@@ -1,7 +1,8 @@
 name: Build tt
 description: >-
   Build tt from a commit of tarantool/tt and put it on PATH: its tt wasm rock
-  and tt emmylua rock pack the rocks.
+  and tt emmylua rock pack the rocks, and tt package pack those of the
+  packages.
 
 inputs:
   ref:
@@ -9,7 +10,9 @@ inputs:
     # The tt that packs every rock: the one setting of it. A commit of v3
     # with tt emmylua rock and tt wasm rock --from (tarantool/tt#1446).
     # Moving it changes how the rocks of versions not yet published are
-    # packed, never those already published.
+    # packed, never those already published. The packages need a tt with
+    # tt package pack --format rock and rock-src, which this one has not:
+    # move it to a commit of v3 that has, once there is one.
     default: 7bb1285dcc68f347ab1387650edd9be4c8e85806
 
 outputs:

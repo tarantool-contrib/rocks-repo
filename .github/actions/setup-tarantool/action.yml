@@ -1,0 +1,48 @@
+name: Install Tarantool
+description: >-
+  Install a Tarantool release with its headers by tt binary install, into a
+  user scope of tt in the temporary directory of the runner, put it on PATH
+  and point TT_CLI_TARANTOOL_PREFIX at it: tt package pack builds the C parts
+  of a package against these headers. tt is to be on PATH (setup-tt).
+
+inputs:
+  version:
+    description: The Tarantool release, as tt binary install tarantool takes it (3.5, 3.5.1).
+    required: true
+
+outputs:
+  version:
+    description: The first line of tarantool --version.
+    value: ${{ steps.install.outputs.version }}
+
+runs:
+  using: composite
+  steps:
+    # tt installs the prebuilt Tarantool on Linux and builds the release from
+    # source on macOS, with what the macOS jobs of tt install for it: CMake
+    # below 4, for the older CMake projects it bundles, by pip.
+    - if: runner.os == 'macOS'
+      uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+      with:
+        python-version: "3.13"
+
+    - if: runner.os == 'macOS'
+      name: Install what a build of Tarantool needs
+      shell: bash
+      run: |
+        brew install autoconf automake libtool ninja pkgconf lz4 openssl@3 readline
+        pip install --require-hashes -r "$GITHUB_ACTION_PATH/requirements-macos.txt"
+
+    - id: install
+      name: Install Tarantool
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+      run: |
+        root=$RUNNER_TEMP/tarantool
+        TT_USER_ROOT=$root tt --no-prompt binary install tarantool "$VERSION" --scope user
+        "$root/bin/tarantool" --version
+        [ -d "$root/include/tarantool" ] || { echo "no headers in $root/include/tarantool" >&2; exit 1; }
+        echo "$root/bin" >> "$GITHUB_PATH"
+        echo "TT_CLI_TARANTOOL_PREFIX=$root" >> "$GITHUB_ENV"
+        echo "version=$("$root/bin/tarantool" --version | head -n 1)" >> "$GITHUB_OUTPUT"
