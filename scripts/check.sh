@@ -7,19 +7,28 @@
 #   - every published release ROCK-* of a rock of the repository is in the
 #     index;
 #   - every URL of the index answers with what its sha256 (and size) says;
-#   - the rockspec of an entry is the rockspec each of its rocks holds.
+#   - the rockspec of an entry is the rockspec each of its rocks holds;
+#   - an entry is yanked when, and only when, the version-revision of a
+#     table it is of is: the publish workflow mirrors the tables.
 #
-# Usage: scripts/check.sh FILE
+# Usage: scripts/check.sh [--pending] FILE
 #
 # It downloads every file the index names, of the yanked versions too: a
 # project that locked one still installs it. The versions of the tables the
 # index lacks are reported, not failed: the publish workflow adds them; so
-# are the yanked ones. A relative URL is resolved against $INDEX_URL,
-# default the URL the index is served from.
+# are the yanked ones. --pending, for the tables of a pull request, reports
+# the yanked flags they change rather than failing: the publish workflow
+# sets them once it is merged. A relative URL is resolved against
+# $INDEX_URL, default the URL the index is served from.
 # shellcheck source=lib.sh
 source "$(dirname "$0")/lib.sh"
 
-[ $# = 1 ] || die "usage: check.sh FILE"
+pending=false
+if [ "${1:-}" = --pending ]; then
+	pending=true
+	shift
+fi
+[ $# = 1 ] || die "usage: check.sh [--pending] FILE"
 index=$1
 base=${INDEX_URL:-https://raw.githubusercontent.com/${GH_REPO:-}/index/}
 
@@ -154,6 +163,24 @@ for rock in $(rocks); do
 			notice "$rock $key of $rock/releases.json is not in the index yet: the publish workflow adds it"
 	done
 done
+
+# The yanked flags are those of the tables.
+while read -r change; do
+	[ -n "$change" ] || continue
+	read -r rock key yanked < <(jq -r '"\(.rock) \(.key) \(.yanked)"' <<<"$change")
+	if [ "$yanked" = true ]; then
+		what="is yanked in $rock/releases.json, not in the index"
+		todo=yanks
+	else
+		what="is yanked in the index, not in $rock/releases.json"
+		todo=unyanks
+	fi
+	if $pending; then
+		notice "$rock $key $what: the publish workflow $todo it once the tables are merged"
+	else
+		fail "$rock $key $what: run the publish workflow, which $todo it"
+	fi
+done < <(yank_changes "$index")
 
 if [ "$errors" -gt 0 ]; then
 	die "$errors problems"

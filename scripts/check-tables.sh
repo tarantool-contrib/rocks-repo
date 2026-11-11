@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Check the tables, and the descriptions and targets of the packages: each
-# entry is well formed, and, when BASE (a git commit
-# of this repository) is given, no version-revision the index FILE has is
-# changed from what BASE holds: a published release never changes, so a
-# new build of a version is a new rock_revision.
+# entry is well formed, and, when BASE (a git commit of this repository) is
+# given, no version-revision the index FILE has is changed from what BASE
+# holds: a published release never changes, so a new build of a version is
+# a new rock_revision. "yanked", the reason a version is yanked for, is
+# what may be added to it, changed or removed.
 #
 # Usage: scripts/check-tables.sh FILE [BASE]
 # shellcheck disable=SC2016 # The jq programs are in single quotes.
@@ -36,6 +37,9 @@ common='
 	  (if ($e.rock_revision | type) == "number" and $e.rock_revision >= 1
 	      and ($e.rock_revision | floor) == $e.rock_revision then empty
 	   else "\($at): rock_revision is no positive integer" end),
+	  (if $e.yanked == null or (($e.yanked | type) == "string" and ($e.yanked | test("\\S"))
+	      and ($e.yanked | test("\n") | not)) then empty
+	   else "\($at): yanked is the reason the version is yanked for, a line" end),
 '
 
 check "$root/wasm/releases.json" "$common"'
@@ -107,7 +111,7 @@ for rock in $(rocks); do
 
 	check "$root/$rock/releases.json" "$common"'
 		  (if ($e.ref | str) then empty else "\($at): no ref to build" end),
-		  (($e | keys) - ["version", "rock_revision", "ref"] | .[] | "\($at): no such field: \(.)")
+		  (($e | keys) - ["version", "rock_revision", "ref", "yanked"] | .[] | "\($at): no such field: \(.)")
 		end | "'"$rock"'/releases.json: " + .'
 
 	check "$root/$rock/package.json" '
@@ -147,7 +151,8 @@ for rock in $(rocks); do
 		| "'"$rock"'/targets.json: " + .'
 done
 
-# Against BASE: an indexed version-revision is as BASE has it.
+# Against BASE: an indexed version-revision is as BASE has it, but for being
+# yanked.
 if [ -n "$base" ]; then
 	for rock in $(rocks); do
 		old=$(git -C "$root" show "$base:$rock/releases.json" 2> /dev/null || echo '{}')
@@ -157,8 +162,8 @@ if [ -n "$base" ]; then
 			index_has "$index" "$rock" "$key" || continue
 			if ! jq -e --arg v "$version" --argjson old "$old" '
 				.[$v] == null or .[$v].rock_revision != $old[$v].rock_revision
-				or .[$v] == $old[$v]' "$(table "$rock")" > /dev/null; then
-				problems+=("$rock/releases.json: $version: $rock $key is published; publish the change as a new rock_revision")
+				or (.[$v] | del(.yanked)) == ($old[$v] | del(.yanked))' "$(table "$rock")" > /dev/null; then
+				problems+=("$rock/releases.json: $version: $rock $key is published; publish the change as a new rock_revision, only yanked may change")
 			fi
 		done < <(jq -r 'keys[]' <<<"$old")
 	done

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Print, as JSON, what the publish workflow has to do: the version-revisions
-# of the tables the index FILE lacks, and the builds from source they need.
+# of the tables the index FILE lacks, the builds from source they need, and
+# the entries of the index whose yanked flag the tables change.
 #
 # Usage: scripts/plan.sh FILE
 #
@@ -15,7 +16,9 @@
 #                {"rock": "hello", "kind": "package", "version": "1.2.0",
 #                 "revision": 1, "ref": "v1.2.0", "arch": "src",
 #                 "os": "ubuntu-24.04", "container": "",
-#                 "repository": "example/hello"}]
+#                 "repository": "example/hello"}],
+#     "yank": [{"rock": "wasm", "key": "0.1.0-1", "yanked": true,
+#               "reason": "crashes on load"}]
 #   }
 #
 # kind is that of scripts/lib.sh. release is the state of the release of the
@@ -26,8 +29,9 @@
 # targets.json, and the rock, kind, version and ref. A build of a package
 # also has the revision and the GitHub repository of ROCK/package.json; a
 # package that publishes its source rock has one more build, of the arch
-# src, on the os and container of its first target. What is to be done is
-# also reported on stderr.
+# src, on the os and container of its first target. yank is what
+# yank_changes of scripts/lib.sh prints, for scripts/index-push.sh to do.
+# What is to be done is also reported on stderr.
 # shellcheck source=lib.sh
 source "$(dirname "$0")/lib.sh"
 
@@ -86,6 +90,13 @@ for item in "${items[@]}"; do
 	' "$root/$rock/targets.json")")
 done
 
+mapfile -t yanks < <(yank_changes "$index")
+for yank in "${yanks[@]}"; do
+	jq -r '"\(.rock) \(.key): " + if .yanked then "yank it: \(.reason)" else "unyank it" end' \
+		<<<"$yank" >&2
+done
+
 jq -n --slurpfile publish <(printf '%s\n' "${items[@]}") \
 	--slurpfile builds <(printf '%s\n' "${builds[@]}") \
-	'{publish: $publish, builds: $builds}'
+	--slurpfile yank <(printf '%s\n' "${yanks[@]}") \
+	'{publish: $publish, builds: $builds, yank: $yank}'

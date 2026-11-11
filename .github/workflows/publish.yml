@@ -4,7 +4,9 @@ name: publish
 # of its own, then adds them all to the index, tt-rocks-index.json of the
 # branch index, in one commit. The releases go first and the index second:
 # a release a failed run published but did not index is indexed by the next
-# run, and a draft a failed run left is deleted and made anew.
+# run, and a draft a failed run left is deleted and made anew. The same
+# commit yanks the entries the tables yank, and unyanks those they no longer
+# do: this workflow is the one writer of the index.
 
 on:
   push:
@@ -46,6 +48,7 @@ jobs:
       builds_wasm: ${{ steps.plan.outputs.builds_wasm }}
       builds_packages: ${{ steps.plan.outputs.builds_packages }}
       pack: ${{ steps.plan.outputs.pack }}
+      yank: ${{ steps.plan.outputs.yank }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -69,8 +72,12 @@ jobs:
             # Whether anything is to be packed by tt rather than only indexed:
             # the build jobs pack the rocks of a package.
             echo "pack=$(jq '[.publish[] | select(.release != "published" and .kind != "package")] != []' "$plan")"
+            # The entries of the index to yank or unyank as the tables say.
+            echo "yank=$(jq -c .yank "$plan")"
           } >> "$GITHUB_OUTPUT"
           jq -r '.publish[] | "- `\(.tag)`: \(.release)"' "$plan" >> "$GITHUB_STEP_SUMMARY"
+          jq -r '.yank[] | "- `\(.rock)-\(.key)`: \(if .yanked then "yank" else "unyank" end)"' \
+            "$plan" >> "$GITHUB_STEP_SUMMARY"
 
   # The EmmyLua versions built from source, on each target of
   # emmylua/targets.json: cargo-zigbuild against glibc 2.17 on Linux, as
@@ -356,13 +363,14 @@ jobs:
           retention-days: 7
 
   # A package that fails to build fails its own publication only: the
-  # others are published and indexed.
+  # others are published and indexed. The yanked flags of the tables are
+  # set on the index here too: this job is the one writer of the index.
   publish:
     name: Publish
     needs: [plan, build-emmylua, build-wasm, build-package]
     if: >-
       !cancelled() && needs.plan.result == 'success'
-      && needs.plan.outputs.publish != '[]'
+      && (needs.plan.outputs.publish != '[]' || needs.plan.outputs.yank != '[]')
       && (needs.build-emmylua.result == 'success' || needs.build-emmylua.result == 'skipped')
       && (needs.build-wasm.result == 'success' || needs.build-wasm.result == 'skipped')
       && needs.build-package.result != 'cancelled'
@@ -401,7 +409,8 @@ jobs:
           done < <(jq -r '.[] | "\(.rock) \(.version)"' <<<"$PUBLISH")
           exit "$failed"
 
-      # Those published, even if others failed.
+      # Those published, even if others failed, and the yanked flags of the
+      # tables.
       - name: Index the releases
         if: ${{ !cancelled() }}
         env:
