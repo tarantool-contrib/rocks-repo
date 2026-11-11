@@ -6,8 +6,9 @@
 #
 # Usage: scripts/pack-package.sh ROCK VERSION ARCH CHECKOUT OUT
 #
-# The build jobs of the publish workflow run it. The project is
-# CHECKOUT/PATH, PATH being that of ROCK/package.json; tt package pack
+# The build jobs of the publish workflow run it, with the Tarantool of
+# scripts/package-tarantool.sh on PATH. The project is CHECKOUT/PATH, PATH
+# being that of ROCK/package.json; tt package pack
 # builds it and packs the rock with --format rock, or the source rock with
 # --format rock-src for the arch src, and --revision the rock_revision of
 # VERSION. The rock tt makes has to be the one the tables name: tt names it
@@ -35,11 +36,7 @@ tag=$(tag "$rock" "$version" "$revision")
 archs "$rock" "$version" | grep -qxF "$arch" ||
 	die "$rock $version has no rock of the arch $arch"
 
-project=$checkout
-path=$(package "$rock" path)
-if [ -n "$path" ]; then
-	project=$checkout/$path
-fi
+project=$(project "$rock" "$checkout")
 [ -f "$project/app.manifest.toml" ] || die "$project has no app.manifest.toml"
 
 format=rock

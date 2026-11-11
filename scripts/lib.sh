@@ -95,6 +95,15 @@ source_rock() {
 		jq -e '.source_rock == true' "$root/$1/package.json" > /dev/null
 }
 
+# project ROCK CHECKOUT prints the directory of the project of the package
+# ROCK in CHECKOUT, a checkout of its repository: CHECKOUT/PATH, PATH being
+# that of ROCK/package.json, or CHECKOUT.
+project() {
+	local path
+	path=$(package "$1" path)
+	printf '%s\n' "$2${path:+/$path}"
+}
+
 # upstream ROCK prints the GitHub repository ROCK is built or packed from.
 upstream() {
 	case $(kind "$1") in

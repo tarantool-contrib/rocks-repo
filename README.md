@@ -119,18 +119,15 @@ dependencies are the ranges of `[dependencies]`, the source is
   {
     "repository": "https://github.com/example/hello",
     "path": "lua",
-    "tarantool": "3.5.2",
     "source_rock": true
   }
   ```
 
   `repository` is the repository on GitHub, `path` the directory of the
-  project in it if it is not the root, `tarantool` the Tarantool release the
-  builds install (`tt binary install tarantool`) and build the C parts
-  against, and `source_rock`, false by default, whether the source rock
-  (`tt package pack --format rock-src`, arch `src`) is published too: a tt
-  that finds no rock of its platform or `all` builds the package from it,
-  so it serves the platforms no target builds for.
+  project in it if it is not the root, and `source_rock`, false by default,
+  whether the source rock (`tt package pack --format rock-src`, arch `src`)
+  is published too: a tt that finds no rock of its platform or `all` builds
+  the package from it, so it serves the platforms no target builds for.
 - `targets.json`, where its rocks are built: a target per platform for a
   package with a native file (a C or Rust module, a program), or the one
   target of arch `all` for a package with none, whose `.all` rock installs
@@ -156,12 +153,23 @@ dependencies are the ranges of `[dependencies]`, the source is
   ```
 
 - `setup.sh`, optional: what the build needs besides tt, Tarantool and what
-  the runner or the container has (CMake, a Rust toolchain, git in a
-  container), run by bash in the root of this repository before the package
-  is checked out, `ARCH` naming the target.
+  the runner or the container has (CMake, a Rust toolchain; git and Python
+  3.11 or newer in a container), run by bash in the root of this repository
+  before the package is checked out, `ARCH` naming the target.
 
 A build checks the package out with its submodules, its history and its
-tags, and the version tt names it by has to be the one of the table, of a
+tags, and builds it against the oldest Tarantool `[platform].tarantool` of
+its manifest allows, its lower bound: a module built against the headers of
+the oldest Tarantool it supports loads on the newer ones, built against newer
+ones it may not load on the older. `>=3.3.0,<4.0.0`, `~> 3.3` and `>=3.3` are
+built against 3.3.0. A package is to declare its lower bound, as a release
+of 3.0.0 or newer by `>=`: `*`, `<4.0.0` or `>3.3.0` fails the build, and so
+does `[ee]`, Tarantool Enterprise, of which there is no SDK here
+(`scripts/package-tarantool.sh`). tt installs that Tarantool, prebuilt on
+Linux, built from source on macOS, and the install is cached by the release
+and the runner: each is installed, or built, once.
+
+The version tt names the package by has to be the one of the table, of a
 clean tree, and its arch that of the target: a tag that is not the version,
 a `setup.sh` that changes the checkout, or a native file in a package of
 arch `all`, fails the build. The build runs the code of the package with no
