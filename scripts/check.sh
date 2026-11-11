@@ -2,7 +2,8 @@
 # Check the index FILE against the releases:
 #
 #   - the entries are of the format, their URLs end in the names of the
-#     files they are of;
+#     files they are of, an arch is a platform, all or src, and yanked, of
+#     a version withdrawn, is a boolean;
 #   - every published release ROCK-* of a rock of the repository is in the
 #     index;
 #   - every URL of the index answers with what its sha256 (and size) says;
@@ -10,10 +11,11 @@
 #
 # Usage: scripts/check.sh FILE
 #
-# It downloads every file the index names. The versions of the tables the
-# index lacks are reported, not failed: the publish workflow adds them. A
-# relative URL is resolved against $INDEX_URL, default the URL the index is
-# served from.
+# It downloads every file the index names, of the yanked versions too: a
+# project that locked one still installs it. The versions of the tables the
+# index lacks are reported, not failed: the publish workflow adds them; so
+# are the yanked ones. A relative URL is resolved against $INDEX_URL,
+# default the URL the index is served from.
 # shellcheck source=lib.sh
 source "$(dirname "$0")/lib.sh"
 
@@ -65,9 +67,13 @@ problems=$(jq -r '
 			(if ($e.rockspec.url | named("\($rock)-\($key).rockspec")) then empty
 			 else "\($at): the rockspec URL \($e.rockspec.url) is not of \($rock)-\($key).rockspec" end),
 			(if ($e.rockspec.sha256 | hex64) then empty else "\($at): the rockspec has no sha256" end),
+			(if $e.yanked == null or ($e.yanked | type) == "boolean" then empty
+			 else "\($at): yanked is no boolean" end),
 			(if ($e.artifacts | type) == "array" and ($e.artifacts | length) > 0 then
 				($e.artifacts[] | "\($rock)-\($key).\(.arch).rock" as $name
-				 | (if (.url | named($name)) then empty
+				 | (if (.arch | type) == "string" and (.arch | test("^([a-z0-9_]+-[a-z0-9_]+|all|src)$"))
+				    then empty else "\($at): \(.arch | tojson) is no arch" end),
+				   (if (.url | named($name)) then empty
 				    else "\($at): the URL \(.url) is not of \($name)" end),
 				   (if (.sha256 | hex64) then empty else "\($at): \($name) has no sha256" end),
 				   (if .size == null or (.size | type) == "number" then empty
@@ -105,6 +111,9 @@ checked=0
 while read -r rock key; do
 	[ -n "$rock" ] || continue
 	entry=$(jq -c --arg r "$rock" --arg k "$key" '.repository[$r][$k]' "$index")
+	if jq -e '.yanked == true' <<<"$entry" > /dev/null; then
+		notice "$rock $key is yanked"
+	fi
 	spec=$work/$rock-$key.rockspec
 	url=$(jq -r .rockspec.url <<<"$entry")
 	if ! download "$url" "$spec"; then
