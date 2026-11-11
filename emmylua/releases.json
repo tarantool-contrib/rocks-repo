@@ -1,0 +1,49 @@
+{
+  "0.25.1": {
+    "platforms": [
+      {
+        "goarch": "amd64",
+        "goos": "linux",
+        "sha256": {
+          "emmylua_check": "e4a700af4921e2d908e2f7299eaa86e3e1b3b265e27225ab33c7eb03ebc2187d",
+          "emmylua_doc_cli": "f8e279988471e805e79839f51bb305647598b3e333609dd5ced177df722ad861",
+          "emmylua_ls": "9731ec340b1b40916555dcb31c1c539beee9fa184997962c9af250c42b316950",
+          "luafmt": "bce370647ff33d2a62a1b9b3802d87b3b177383b20785a7af2348118fb70c727"
+        },
+        "suffix": "linux-x64-glibc.2.17"
+      },
+      {
+        "goarch": "arm64",
+        "goos": "linux",
+        "sha256": {
+          "emmylua_check": "62a9a56d3ff5d0e108909332cb91582a0c1a4ebbfdce1a4422e7ae74d4a7f8b1",
+          "emmylua_doc_cli": "fefecee80e31620ed77ed889d8450e0e993db49daedc345c06c79ec34297878e",
+          "emmylua_ls": "210535be13c31ceefcdd0f8451eb4c0d3d430887fc2c382eaf82484a9187220d",
+          "luafmt": "9a9e6dfbaa94f2b1378732b34fd9d7d553291f230eb2230defae1cff1279204e"
+        },
+        "suffix": "linux-aarch64-glibc.2.17"
+      },
+      {
+        "goarch": "arm64",
+        "goos": "darwin",
+        "sha256": {
+          "emmylua_check": "eeaad59d173cb8d7cb0fe778936d7b584fe114a3eb46587ef3e4aec24b605af4",
+          "emmylua_doc_cli": "d21a74bfff5ff53d44888ede13ad38152696da1b6c5b1021f3c0c4a54d25db5e",
+          "emmylua_ls": "335023043cbc9ad683a13b24eb79f709a370215daf53673276b9a9663df96504",
+          "luafmt": "1637fec3d449c10d71e27a30e0cc84bd4ad46b124c5ff8de0767cab954b67a4f"
+        },
+        "suffix": "darwin-arm64"
+      }
+    ],
+    "ref": "0.25.1",
+    "rock_revision": 1,
+    "source_md5": "ca05597790110ec49ef46e66cc377d5e",
+    "version": "0.25.1"
+  },
+  "0.30.0pre1": {
+    "ref": "599c33862491c5ca0f325e0ef549ad34c510ca97",
+    "rock_revision": 1,
+    "source_md5": "2e5867117dccf42f0b36e8a751b592a8",
+    "version": "0.30.0pre1"
+  }
+}

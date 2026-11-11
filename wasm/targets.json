@@ -1,0 +1,25 @@
+{
+  "targets": [
+    {
+      "arch": "linux-x86_64",
+      "os": "ubuntu-24.04",
+      "container": "packpack/packpack:centos-8@sha256:c1da043e155aba589e2708ebc22656ac344cfa5cf96b8afe4c623492d620a6ed",
+      "target": "x86_64-unknown-linux-gnu",
+      "module": "target/x86_64-unknown-linux-gnu/release/libtarantool_wasm_rs.so"
+    },
+    {
+      "arch": "linux-aarch64",
+      "os": "ubuntu-24.04-arm",
+      "container": "packpack/packpack:centos-8@sha256:c1da043e155aba589e2708ebc22656ac344cfa5cf96b8afe4c623492d620a6ed",
+      "target": "aarch64-unknown-linux-gnu",
+      "module": "target/aarch64-unknown-linux-gnu/release/libtarantool_wasm_rs.so"
+    },
+    {
+      "arch": "macosx-aarch64",
+      "os": "macos-15",
+      "container": "",
+      "target": "",
+      "module": "target/release/libtarantool_wasm_rs.dylib"
+    }
+  ]
+}

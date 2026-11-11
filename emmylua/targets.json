@@ -1,0 +1,23 @@
+{
+  "rust": "1.99.1",
+  "targets": [
+    {
+      "arch": "linux-x86_64",
+      "os": "ubuntu-22.04",
+      "target": "x86_64-unknown-linux-gnu",
+      "glibc": "2.17"
+    },
+    {
+      "arch": "linux-aarch64",
+      "os": "ubuntu-22.04",
+      "target": "aarch64-unknown-linux-gnu",
+      "glibc": "2.17"
+    },
+    {
+      "arch": "macosx-aarch64",
+      "os": "macos-15",
+      "target": "aarch64-apple-darwin",
+      "glibc": ""
+    }
+  ]
+}

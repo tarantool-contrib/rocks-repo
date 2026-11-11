@@ -1,0 +1,9 @@
+{
+  "0.1.0": {
+    "ref": "v0.1.0",
+    "rock_revision": 1,
+    "sdk_asset": "tarantool-wasm-0.1.0-sdk.tar.gz",
+    "sdk_md5": "f986e42dd8d430110c06e9fb2963209b",
+    "version": "0.1.0"
+  }
+}
