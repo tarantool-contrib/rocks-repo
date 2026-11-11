@@ -120,8 +120,8 @@ for rock in $(rocks); do
 		 else "repository is not https://github.com/OWNER/NAME" end),
 		(if .path == null or (.path | relpath) then empty
 		 else "path is not a relative path in the repository" end),
-		(if (.tarantool | type) == "string" and (.tarantool | test("^[0-9]+([.][0-9]+){0,2}$")) then empty
-		 else "tarantool is not a Tarantool release such as 3, 3.5 or 3.5.1" end),
+		(if has("tarantool") then "tarantool is not set here: a build uses the lower bound of [platform].tarantool of the manifest of the package"
+		 else empty end),
 		(if .source_rock == null or (.source_rock | type) == "boolean" then empty
 		 else "source_rock is no boolean" end),
 		(keys - ["repository", "path", "tarantool", "source_rock"] | .[] | "no such field: \(.)")

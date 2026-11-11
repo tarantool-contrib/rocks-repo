@@ -15,7 +15,7 @@
 #                {"rock": "hello", "kind": "package", "version": "1.2.0",
 #                 "revision": 1, "ref": "v1.2.0", "arch": "src",
 #                 "os": "ubuntu-24.04", "container": "",
-#                 "repository": "example/hello", "tarantool": "3.5.2"}]
+#                 "repository": "example/hello"}]
 #   }
 #
 # kind is that of scripts/lib.sh. release is the state of the release of the
@@ -24,10 +24,10 @@
 # from source needs a build of each target of ROCK/targets.json unless its
 # release is published: a build is the target, the other fields of
 # targets.json, and the rock, kind, version and ref. A build of a package
-# also has the revision, the GitHub repository and the Tarantool of
-# ROCK/package.json; a package that publishes its source rock has one more
-# build, of the arch src, on the os and container of its first target. What
-# is to be done is also reported on stderr.
+# also has the revision and the GitHub repository of ROCK/package.json; a
+# package that publishes its source rock has one more build, of the arch
+# src, on the os and container of its first target. What is to be done is
+# also reported on stderr.
 # shellcheck source=lib.sh
 source "$(dirname "$0")/lib.sh"
 
@@ -73,10 +73,8 @@ for item in "${items[@]}"; do
 	extra='{}'
 	if [ "$kind" = package ]; then
 		extra=$(jq -nc --argjson revision "$revision" --arg repository "$(upstream "$rock")" \
-			--arg tarantool "$(package "$rock" tarantool)" --argjson src "$(
-				source_rock "$rock" && echo true || echo false)" \
-			'{revision: $revision, repository: $repository, tarantool: $tarantool,
-			  src: $src}')
+			--argjson src "$(source_rock "$rock" && echo true || echo false)" \
+			'{revision: $revision, repository: $repository, src: $src}')
 	fi
 	builds+=("$(jq -c --arg rock "$rock" --arg kind "$kind" --arg version "$version" \
 		--arg ref "$ref" --argjson extra "$extra" '

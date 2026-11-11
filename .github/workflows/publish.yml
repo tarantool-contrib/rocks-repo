@@ -312,10 +312,6 @@ jobs:
 
       - uses: ./.github/actions/setup-tt
 
-      - uses: ./.github/actions/setup-tarantool
-        with:
-          version: ${{ matrix.tarantool }}
-
       # With the history and the tags: tt names the version of the package
       # by its tag v* at the ref.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -326,6 +322,26 @@ jobs:
           submodules: recursive
           fetch-depth: 0
           persist-credentials: false
+
+      # A Python with tomllib reads the manifest; a container is to have
+      # one (3.11 or newer), its setup.sh can install it.
+      - if: matrix.container == ''
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+
+      # The oldest Tarantool [platform].tarantool of the manifest allows: a
+      # module built against its headers loads on the newer ones too.
+      - id: tarantool
+        name: Pick the Tarantool
+        run: |
+          version=$(scripts/package-tarantool.sh "$ROCK" .package)
+          echo "Tarantool $version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - uses: ./.github/actions/setup-tarantool
+        with:
+          version: ${{ steps.tarantool.outputs.version }}
 
       - name: Pack
         run: scripts/pack-package.sh "$ROCK" "$VERSION" "$ARCH" .package "$RUNNER_TEMP/build"

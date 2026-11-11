@@ -3,46 +3,79 @@ description: >-
   Install a Tarantool release with its headers by tt binary install, into a
   user scope of tt in the temporary directory of the runner, put it on PATH
   and point TT_CLI_TARANTOOL_PREFIX at it: tt package pack builds the C parts
-  of a package against these headers. tt is to be on PATH (setup-tt).
+  of a package against these headers. tt is to be on PATH (setup-tt). The
+  install is cached: each release is installed, or built, once.
 
 inputs:
   version:
-    description: The Tarantool release, as tt binary install tarantool takes it (3.5, 3.5.1).
+    description: The Tarantool release, MAJOR.MINOR.PATCH, as tt binary install tarantool takes it.
     required: true
 
 outputs:
   version:
     description: The first line of tarantool --version.
-    value: ${{ steps.install.outputs.version }}
+    value: ${{ steps.check.outputs.version }}
 
 runs:
   using: composite
   steps:
+    # By the release, the runner, and this action, which says how it is
+    # installed. tt links bin/ and include/ to versions/ by absolute paths,
+    # so the key has the directory too: that of a container is another.
+    - id: restore
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ runner.temp }}/tarantool
+        key: >-
+          tarantool-${{ inputs.version }}-${{ runner.os }}-${{ runner.arch }}-${{
+          hashFiles('.github/actions/setup-tarantool/**') }}-${{ runner.temp }}
+
     # tt installs the prebuilt Tarantool on Linux and builds the release from
     # source on macOS, with what the macOS jobs of tt install for it: CMake
     # below 4, for the older CMake projects it bundles, by pip.
-    - if: runner.os == 'macOS'
+    - if: steps.restore.outputs.cache-hit != 'true' && runner.os == 'macOS'
       uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
       with:
         python-version: "3.13"
 
-    - if: runner.os == 'macOS'
+    - if: steps.restore.outputs.cache-hit != 'true' && runner.os == 'macOS'
       name: Install what a build of Tarantool needs
       shell: bash
       run: |
         brew install autoconf automake libtool ninja pkgconf lz4 openssl@3 readline
         pip install --require-hashes -r "$GITHUB_ACTION_PATH/requirements-macos.txt"
 
-    - id: install
+    - if: steps.restore.outputs.cache-hit != 'true'
       name: Install Tarantool
       shell: bash
       env:
         VERSION: ${{ inputs.version }}
       run: |
+        [[ $VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] ||
+          { echo "$VERSION is not MAJOR.MINOR.PATCH" >&2; exit 1; }
+        TT_USER_ROOT=$RUNNER_TEMP/tarantool tt --no-prompt binary install tarantool "$VERSION" --scope user
+
+    # Saved at once, before anything of a package runs, whatever becomes of
+    # the job.
+    - if: steps.restore.outputs.cache-hit != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ runner.temp }}/tarantool
+        key: ${{ steps.restore.outputs.cache-primary-key }}
+
+    - id: check
+      name: Put Tarantool on PATH
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+      run: |
         root=$RUNNER_TEMP/tarantool
-        TT_USER_ROOT=$root tt --no-prompt binary install tarantool "$VERSION" --scope user
-        "$root/bin/tarantool" --version
-        [ -d "$root/include/tarantool" ] || { echo "no headers in $root/include/tarantool" >&2; exit 1; }
+        reported=$("$root/bin/tarantool" --version | head -n 1)
+        echo "$reported"
+        [[ $reported == "Tarantool $VERSION-"* ]] ||
+          { echo "the Tarantool in $root is not $VERSION" >&2; exit 1; }
+        [ -d "$root/include/tarantool" ] ||
+          { echo "no headers in $root/include/tarantool" >&2; exit 1; }
         echo "$root/bin" >> "$GITHUB_PATH"
         echo "TT_CLI_TARANTOOL_PREFIX=$root" >> "$GITHUB_ENV"
-        echo "version=$("$root/bin/tarantool" --version | head -n 1)" >> "$GITHUB_OUTPUT"
+        echo "version=$reported" >> "$GITHUB_OUTPUT"

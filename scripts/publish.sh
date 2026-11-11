@@ -193,8 +193,9 @@ notes=$work/notes
 		printf "\`%s\`\n" "${archs[@]}" | paste -sd ' ' | sed "s/\` \`/\`, \`/g; s/\$/./"
 		echo
 		echo "Built from [$(upstream "$rock")@$ref]($(package "$rock" repository)/tree/$ref)${path:+, the project in \`$path\`,}"
-		echo "with Tarantool $(package "$rock" tarantool) for the targets of \`$rock/targets.json\`"
-		echo "by the publish workflow, and packed there by $packed."
+		echo "for the targets of \`$rock/targets.json\` by the publish workflow, against the"
+		echo "oldest Tarantool \`[platform].tarantool\` of its manifest allows, and packed there"
+		echo "by $packed."
 	elif from_source "$rock" "$version"; then
 		echo "\`$rock\` $version-$revision: binary rocks for tt 3, one per platform."
 		echo
