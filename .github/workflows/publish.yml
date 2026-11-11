@@ -116,6 +116,21 @@ jobs:
         name: Install cargo-zigbuild
         run: pip install --require-hashes -r emmylua/requirements-zigbuild.txt
 
+      # The programs report the version of their crates: 0.30.0 for a build
+      # of main. They are stamped with the version of the rock instead, as
+      # semver with the commit as build metadata (0.30.0-pre1+599c338), by
+      # the tool EmmyLua stamps its own releases with. The lock is then
+      # updated for the crates of EmmyLua alone, so the build stays --locked
+      # for every other.
+      - name: Stamp the version
+        working-directory: src
+        run: |
+          program_version=$(../scripts/program-version.sh "$VERSION" "$(git rev-parse HEAD)")
+          cargo run --locked --quiet -p edit_version -- "$program_version"
+          cargo update --workspace
+          git diff --stat
+          echo "PROGRAM_VERSION=$program_version" >> "$GITHUB_ENV"
+
       - name: Build
         working-directory: src
         run: |
@@ -129,6 +144,16 @@ jobs:
       - name: Stage
         run: |
           read -ra programs <<<"$PROGRAMS"
+          # A build for the runner's own target runs: each program has to
+          # report the version it was stamped with.
+          if [ "$(rustc -vV | sed -n 's/^host: //p')" = "$TARGET" ]; then
+            for program in "${programs[@]}"; do
+              reported=$("src/target/$TARGET/release/$program" --version)
+              echo "$reported"
+              [[ $reported == *" $PROGRAM_VERSION" ]] ||
+                { echo "$program reports '$reported', not $PROGRAM_VERSION" >&2; exit 1; }
+            done
+          fi
           mkdir -p "$RUNNER_TEMP/build"
           tar -cf "$RUNNER_TEMP/build/emmylua-$VERSION-$ARCH.tar" \
             -C "src/target/$TARGET/release" "${programs[@]}"

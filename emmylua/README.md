@@ -15,7 +15,11 @@ rock for `tt emmylua`.
   workflow for each target of `targets.json` (`cargo zigbuild` against glibc
   2.17 on Linux, as upstream releases are; `cargo build` on macOS) and packed
   by `tt emmylua rock --from`. Its name is a snapshot before the next release,
-  `0.30.0pre1`: the programs report the version of their crates, `0.30.0`.
+  `0.30.0pre1`, where the crates say `0.30.0`. Before the build the workflow
+  stamps the crates with the version of the rock, as semver, with the commit
+  as build metadata (`scripts/program-version.sh`), by EmmyLua's own
+  `tools/edit_version`, and updates `Cargo.lock` for those crates alone: the
+  programs of `0.30.0pre1` report `0.30.0-pre1+599c338`.
 
 `source_md5` is the md5 of the GitHub archive of `ref`, the source the
 rockspec names; `rock_revision` is the revision of the rock.
