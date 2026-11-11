@@ -12,6 +12,8 @@ on:
     paths:
       - "*/releases.json"
       - "*/targets.json"
+      - "*/package.json"
+      - "*/setup.sh"
       - emmylua/requirements-zigbuild.txt
       - scripts/**
       - .github/actions/**
@@ -42,6 +44,7 @@ jobs:
       builds: ${{ steps.plan.outputs.builds }}
       builds_emmylua: ${{ steps.plan.outputs.builds_emmylua }}
       builds_wasm: ${{ steps.plan.outputs.builds_wasm }}
+      builds_packages: ${{ steps.plan.outputs.builds_packages }}
       pack: ${{ steps.plan.outputs.pack }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -62,8 +65,10 @@ jobs:
             echo "builds=$(jq -c .builds "$plan")"
             echo "builds_emmylua=$(jq -c '[.builds[] | select(.rock == "emmylua")]' "$plan")"
             echo "builds_wasm=$(jq -c '[.builds[] | select(.rock == "wasm")]' "$plan")"
-            # Whether anything is to be packed rather than only indexed.
-            echo "pack=$(jq '[.publish[] | select(.release != "published")] != []' "$plan")"
+            echo "builds_packages=$(jq -c '[.builds[] | select(.kind == "package")]' "$plan")"
+            # Whether anything is to be packed by tt rather than only indexed:
+            # the build jobs pack the rocks of a package.
+            echo "pack=$(jq '[.publish[] | select(.release != "published" and .kind != "package")] != []' "$plan")"
           } >> "$GITHUB_OUTPUT"
           jq -r '.publish[] | "- `\(.tag)`: \(.release)"' "$plan" >> "$GITHUB_STEP_SUMMARY"
 
@@ -266,14 +271,85 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  # The versions of the packages, tt packages each <rock>/package.json
+  # describes: tt package pack builds the package at the ref of the version
+  # and packs its rock on each target of <rock>/targets.json, and its source
+  # rock on one more if it publishes that. This job runs the code of the
+  # package, so it has no token that writes: the rocks are its artifact,
+  # which the publish job checks and publishes without running anything of
+  # the package, nor tt.
+  build-package:
+    name: Build ${{ matrix.rock }} ${{ matrix.version }} ${{ matrix.arch }}
+    needs: plan
+    if: needs.plan.outputs.builds_packages != '[]'
+    runs-on: ${{ matrix.os }}
+    # An empty image, as for macOS, runs the job on the runner.
+    container: ${{ matrix.container }}
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.builds_packages) }}
+    env:
+      ROCK: ${{ matrix.rock }}
+      VERSION: ${{ matrix.version }}
+      ARCH: ${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # What the build needs besides tt, Tarantool and what the runner or
+      # the container has: <rock>/setup.sh of this repository, if there is
+      # one, before anything of the package is checked out.
+      - name: Set up the build
+        run: |
+          if [ -f "$ROCK/setup.sh" ]; then
+            bash "$ROCK/setup.sh"
+          fi
+
+      - uses: ./.github/actions/setup-tt
+
+      - uses: ./.github/actions/setup-tarantool
+        with:
+          version: ${{ matrix.tarantool }}
+
+      # With the history and the tags: tt names the version of the package
+      # by its tag v* at the ref.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ matrix.repository }}
+          ref: ${{ matrix.ref }}
+          path: .package
+          submodules: recursive
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Pack
+        run: scripts/pack-package.sh "$ROCK" "$VERSION" "$ARCH" .package "$RUNNER_TEMP/build"
+
+      # The directory <rock>-<version>-<revision>.<arch>, with the rock and
+      # its rockspec.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: build-${{ matrix.rock }}-${{ matrix.version }}-${{ matrix.arch }}
+          path: ${{ runner.temp }}/build/
+          if-no-files-found: error
+          retention-days: 7
+
+  # A package that fails to build fails its own publication only: the
+  # others are published and indexed.
   publish:
     name: Publish
-    needs: [plan, build-emmylua, build-wasm]
+    needs: [plan, build-emmylua, build-wasm, build-package]
     if: >-
       !cancelled() && needs.plan.result == 'success'
       && needs.plan.outputs.publish != '[]'
       && (needs.build-emmylua.result == 'success' || needs.build-emmylua.result == 'skipped')
       && (needs.build-wasm.result == 'success' || needs.build-wasm.result == 'skipped')
+      && needs.build-package.result != 'cancelled'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:

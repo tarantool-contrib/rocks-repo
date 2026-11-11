@@ -1,0 +1,4 @@
+# CMake for the build of Tarantool from source on macOS, as the macOS jobs
+# of tt pin it: below 4, for the older CMake projects Tarantool bundles.
+cmake==3.31.10 \
+    --hash=sha256:ad697643a00d9ba85179590a383c4f7401169b55ebf4b8b2938daf28c6bdeb6d
