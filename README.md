@@ -180,10 +180,9 @@ no other, their rockspec the same in each and beside each, of the package
 and the version-revision.
 
 Packing a package as a rock needs a tt with `tt package pack --format rock`
-and `rock-src`, which the tt
+and `rock-src`: v3 since tarantool/tt#1449, which the commit
 [`.github/actions/setup-tt/action.yml`](.github/actions/setup-tt/action.yml)
-builds is not yet: the commit it names is to be moved to one that has them
-before a package is added.
+names is of.
 
 The watch workflow reads the tags `vMAJOR.MINOR.PATCH` of the repository of a
 package with git, and opens a pull request for each one newer than the
