@@ -1,0 +1,87 @@
+{
+  "format": 1,
+  "repository": {
+    "emmylua": {
+      "0.25.1-1": {
+        "rockspec": {
+          "url": "https://github.com/tarantool-contrib/rocks-repo/releases/download/emmylua-0.25.1-1/emmylua-0.25.1-1.rockspec",
+          "sha256": "9fd704fbf45c6e76e54f1953e9d9d4608986a36673f01d800354c8fc2bc55588"
+        },
+        "artifacts": [
+          {
+            "arch": "linux-aarch64",
+            "url": "https://github.com/tarantool-contrib/rocks-repo/releases/download/emmylua-0.25.1-1/emmylua-0.25.1-1.linux-aarch64.rock",
+            "sha256": "360e70145dac48a22d94a063163e82482fd9605f73a7f8101eecc88d552f313e",
+            "size": 18801731
+          },
+          {
+            "arch": "linux-x86_64",
+            "url": "https://github.com/tarantool-contrib/rocks-repo/releases/download/emmylua-0.25.1-1/emmylua-0.25.1-1.linux-x86_64.rock",
+            "sha256": "486df620b4b899d8cfcbbb583221b39507dfdabdf1c00344714ee4b3d8b17e8c",
+            "size": 19777374
+          },
+          {
+            "arch": "macosx-aarch64",
+            "url": "https://github.com/tarantool-contrib/rocks-repo/releases/download/emmylua-0.25.1-1/emmylua-0.25.1-1.macosx-aarch64.rock",
+            "sha256": "f1e5251aed994ed3a137182eec9de1a57265b2aeb947573e2cd48f8d49c07866",
+            "size": 19735940
+          }
+        ]
+      },
+      "0.30.0pre1-1": {
+        "rockspec": {
+          "url": "https://github.com/tarantool-contrib/rocks-repo/releases/download/emmylua-0.30.0pre1-1/emmylua-0.30.0pre1-1.rockspec",
+          "sha256": "6f618252c2c966e25629ea1fc6c843c59dd459cc420295bcc739bfd7533bc366"
+        },
+        "artifacts": [
+          {
+            "arch": "linux-aarch64",
+            "url": "https://github.com/tarantool-contrib/rocks-repo/releases/download/emmylua-0.30.0pre1-1/emmylua-0.30.0pre1-1.linux-aarch64.rock",
+            "sha256": "5f07190cb5949e5da1d09712824dc0f330a565a20016b069b0f74ddda6314522",
+            "size": 20183447
+          },
+          {
+            "arch": "linux-x86_64",
+            "url": "https://github.com/tarantool-contrib/rocks-repo/releases/download/emmylua-0.30.0pre1-1/emmylua-0.30.0pre1-1.linux-x86_64.rock",
+            "sha256": "5131fddf81eea270d68e7186ff3d084e3c6f315899c00f5b42aeba71d6c3d04e",
+            "size": 21358935
+          },
+          {
+            "arch": "macosx-aarch64",
+            "url": "https://github.com/tarantool-contrib/rocks-repo/releases/download/emmylua-0.30.0pre1-1/emmylua-0.30.0pre1-1.macosx-aarch64.rock",
+            "sha256": "946935dc2bec9a334ddb6651d90d10802d0bc7c0a98572912402ea0f915a0055",
+            "size": 21274607
+          }
+        ]
+      }
+    },
+    "wasm": {
+      "0.1.0-1": {
+        "rockspec": {
+          "url": "https://github.com/tarantool-contrib/rocks-repo/releases/download/wasm-0.1.0-1/wasm-0.1.0-1.rockspec",
+          "sha256": "81e6869152f946687d93bd68fd17bd3364d30dbe5c7e3afb39e3e7b5e8772f38"
+        },
+        "artifacts": [
+          {
+            "arch": "linux-aarch64",
+            "url": "https://github.com/tarantool-contrib/rocks-repo/releases/download/wasm-0.1.0-1/wasm-0.1.0-1.linux-aarch64.rock",
+            "sha256": "88c4a4439a8fafa46b2b1bed3e687ee0762dcbc5b451f626cb4263ec21ceefe7",
+            "size": 9023214
+          },
+          {
+            "arch": "linux-x86_64",
+            "url": "https://github.com/tarantool-contrib/rocks-repo/releases/download/wasm-0.1.0-1/wasm-0.1.0-1.linux-x86_64.rock",
+            "sha256": "4cacfd83d29c0bd2e2445e3972c031f79142f0f1256402929ad3a407edb8c474",
+            "size": 10494782
+          },
+          {
+            "arch": "macosx-aarch64",
+            "url": "https://github.com/tarantool-contrib/rocks-repo/releases/download/wasm-0.1.0-1/wasm-0.1.0-1.macosx-aarch64.rock",
+            "sha256": "6f173d5e556711dc57d63a5f2d5af67cbf48dc37aa7da8afe13b08a8cca6cecc",
+            "size": 8659753
+          }
+        ]
+      }
+    }
+  }
+}
