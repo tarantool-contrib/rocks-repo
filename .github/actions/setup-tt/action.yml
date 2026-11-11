@@ -1,0 +1,46 @@
+name: Build tt
+description: >-
+  Build tt from a commit of tarantool/tt and put it on PATH: its tt wasm rock
+  and tt emmylua rock pack the rocks.
+
+inputs:
+  ref:
+    description: The commit of tarantool/tt to build.
+    # The tt that packs every rock: the one setting of it. A commit of v3
+    # with tt emmylua rock and tt wasm rock --from (tarantool/tt#1446).
+    # Moving it changes how the rocks of versions not yet published are
+    # packed, never those already published.
+    default: 7bb1285dcc68f347ab1387650edd9be4c8e85806
+
+outputs:
+  commit:
+    description: The commit tt is built from.
+    value: ${{ steps.build.outputs.commit }}
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        repository: tarantool/tt
+        ref: ${{ inputs.ref }}
+        path: .tt-src
+        persist-credentials: false
+
+    - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      with:
+        go-version-file: .tt-src/go.mod
+        cache: false
+
+    - id: build
+      name: Build tt
+      shell: bash
+      run: |
+        mkdir -p "$RUNNER_TEMP/tt-bin"
+        commit=$(git -C .tt-src rev-parse HEAD)
+        (cd .tt-src && CGO_ENABLED=0 go build -trimpath -o "$RUNNER_TEMP/tt-bin/tt" ./cli)
+        rm -rf .tt-src
+        echo "$RUNNER_TEMP/tt-bin" >> "$GITHUB_PATH"
+        echo "commit=$commit" >> "$GITHUB_OUTPUT"
+        echo "TT_COMMIT=$commit" >> "$GITHUB_ENV"
+        echo "tt of tarantool/tt@$commit"

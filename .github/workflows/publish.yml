@@ -1,0 +1,296 @@
+name: publish
+
+# Publishes each version-revision of the tables the index lacks as a release
+# of its own, then adds them all to the index, tt-rocks-index.json of the
+# branch index, in one commit. The releases go first and the index second:
+# a release a failed run published but did not index is indexed by the next
+# run, and a draft a failed run left is deleted and made anew.
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - "*/releases.json"
+      - "*/targets.json"
+      - emmylua/requirements-zigbuild.txt
+      - scripts/**
+      - .github/actions/**
+      - .github/workflows/publish.yml
+  workflow_dispatch:
+
+permissions: {}
+
+# One run at a time, so the index commits come one after another. A run
+# queued behind another plans anew when it starts.
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  plan:
+    name: Plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      publish: ${{ steps.plan.outputs.publish }}
+      builds: ${{ steps.plan.outputs.builds }}
+      builds_emmylua: ${{ steps.plan.outputs.builds_emmylua }}
+      builds_wasm: ${{ steps.plan.outputs.builds_wasm }}
+      pack: ${{ steps.plan.outputs.pack }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - id: plan
+        name: Plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          scripts/fetch-index.sh "$RUNNER_TEMP/index.json"
+          plan=$RUNNER_TEMP/plan.json
+          scripts/plan.sh "$RUNNER_TEMP/index.json" > "$plan"
+          {
+            echo "publish=$(jq -c .publish "$plan")"
+            echo "builds=$(jq -c .builds "$plan")"
+            echo "builds_emmylua=$(jq -c '[.builds[] | select(.rock == "emmylua")]' "$plan")"
+            echo "builds_wasm=$(jq -c '[.builds[] | select(.rock == "wasm")]' "$plan")"
+            # Whether anything is to be packed rather than only indexed.
+            echo "pack=$(jq '[.publish[] | select(.release != "published")] != []' "$plan")"
+          } >> "$GITHUB_OUTPUT"
+          jq -r '.publish[] | "- `\(.tag)`: \(.release)"' "$plan" >> "$GITHUB_STEP_SUMMARY"
+
+  # The EmmyLua versions built from source, on each target of
+  # emmylua/targets.json: cargo-zigbuild against glibc 2.17 on Linux, as
+  # upstream releases are built, and cargo on macOS.
+  build-emmylua:
+    name: Build emmylua ${{ matrix.version }} ${{ matrix.arch }}
+    needs: plan
+    if: needs.plan.outputs.builds_emmylua != '[]'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.builds_emmylua) }}
+    env:
+      VERSION: ${{ matrix.version }}
+      ARCH: ${{ matrix.arch }}
+      TARGET: ${{ matrix.target }}
+      GLIBC: ${{ matrix.glibc }}
+      RUST: ${{ matrix.rust }}
+      PACKAGES: -p emmylua_ls -p emmylua_check -p emmylua_doc_cli -p emmylua_formatter
+      PROGRAMS: emmylua_check emmylua_doc_cli emmylua_ls luafmt
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: EmmyLuaLs/emmylua-analyzer-rust
+          ref: ${{ matrix.ref }}
+          path: src
+          persist-credentials: false
+
+      - name: Install Rust
+        run: |
+          rustup toolchain install "$RUST" --profile minimal --target "$TARGET"
+          echo "RUSTUP_TOOLCHAIN=$RUST" >> "$GITHUB_ENV"
+
+      - if: matrix.glibc != ''
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+
+      - if: matrix.glibc != ''
+        name: Install cargo-zigbuild
+        run: pip install --require-hashes -r emmylua/requirements-zigbuild.txt
+
+      - name: Build
+        working-directory: src
+        run: |
+          read -ra packages <<<"$PACKAGES"
+          if [ -n "$GLIBC" ]; then
+            cargo zigbuild --release --locked --target "$TARGET.$GLIBC" "${packages[@]}"
+          else
+            cargo build --release --locked --target "$TARGET" "${packages[@]}"
+          fi
+
+      - name: Stage
+        run: |
+          read -ra programs <<<"$PROGRAMS"
+          mkdir -p "$RUNNER_TEMP/build"
+          tar -cf "$RUNNER_TEMP/build/emmylua-$VERSION-$ARCH.tar" \
+            -C "src/target/$TARGET/release" "${programs[@]}"
+          tar -tvf "$RUNNER_TEMP/build/emmylua-$VERSION-$ARCH.tar"
+
+      # A tar keeps the programs executable, which an artifact does not.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: build-emmylua-${{ matrix.version }}-${{ matrix.arch }}
+          path: ${{ runner.temp }}/build/emmylua-${{ matrix.version }}-${{ matrix.arch }}.tar
+          if-no-files-found: error
+          retention-days: 7
+
+  # The wasm versions built from source at their tag, on each target of
+  # wasm/targets.json, the way tarantool-wasm-rs builds its own releases
+  # (build-linux.yaml, test-macos.yaml): Linux in the CentOS 8 container of
+  # packpack, for glibc 2.28, macOS on the runner.
+  build-wasm:
+    name: Build wasm ${{ matrix.version }} ${{ matrix.arch }}
+    needs: plan
+    if: needs.plan.outputs.builds_wasm != '[]'
+    runs-on: ${{ matrix.os }}
+    # An empty image, as for macOS, runs the job on the runner.
+    container: ${{ matrix.container }}
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.builds_wasm) }}
+    env:
+      VERSION: ${{ matrix.version }}
+      ARCH: ${{ matrix.arch }}
+      TARGET: ${{ matrix.target }}
+      MODULE: ${{ matrix.module }}
+      CARGO_TERM_COLOR: always
+    steps:
+      # tarantool-wasm-rs goes to the root of the workspace: the actions of
+      # its own below, and the actions and scripts they use, are named by
+      # paths from there. They are its code, which the build runs anyway, and
+      # they use the actions it chose, pinned by tag (actions-rust-lang/
+      # setup-rust-toolchain, actions/cache).
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: tarantool/tarantool-wasm-rs
+          ref: ${{ matrix.ref }}
+          submodules: recursive
+          persist-credentials: false
+
+      - if: runner.os == 'Linux'
+        uses: ./.github/actions/setup-openssl
+
+      - if: runner.os == 'macOS'
+        name: Install OpenSSL and the WIT registry config
+        run: |
+          brew install pkg-config openssl@3
+          echo "OPENSSL_DIR=$(brew --prefix openssl@3)" >> "$GITHUB_ENV"
+          echo "WKG_CONFIG_FILE=$RUNNER_TEMP/wkg-config.toml" >> "$GITHUB_ENV"
+          echo 'default_registry = "wasi.dev"' > "$RUNNER_TEMP/wkg-config.toml"
+
+      - uses: ./.github/actions/setup-rust
+        with:
+          # RUSTFLAGS would override the macOS linker flags of
+          # .cargo/config.toml.
+          rustflags: ""
+
+      - uses: ./.github/actions/wit-setup
+
+      - name: Build
+        run: |
+          if [ -n "$TARGET" ]; then
+            cargo build --locked --release --target "$TARGET"
+          else
+            cargo build --locked --release
+          fi
+
+      # What scripts/package_release.py of tarantool-wasm-rs checks of a
+      # module before it releases it.
+      - name: Check the module
+        run: |
+          case $ARCH in
+          linux-*)
+            deps=$(readelf --dynamic --version-info "$MODULE")
+            glibc=$(grep -o 'GLIBC_[0-9.]*' <<<"$deps" | sort -uV | tail -n 1)
+            echo "needs $glibc"
+            [ "$(printf '%s\n' "$glibc" GLIBC_2.28 | sort -V | tail -n 1)" = GLIBC_2.28 ] ||
+              { echo "$glibc is newer than the 2.28 of the release baseline" >&2; exit 1; }
+            ;;
+          macosx-*)
+            deps=$(otool -L "$MODULE")
+            ;;
+          esac
+          if grep -E 'lib(ssl|crypto)[.-]' <<<"$deps"; then
+            echo "the module links to the OpenSSL shared libraries" >&2
+            exit 1
+          fi
+
+      - name: Stage
+        run: |
+          mkdir -p "$RUNNER_TEMP/build"
+          tar -cf "$RUNNER_TEMP/build/wasm-$VERSION-$ARCH.tar" \
+            -C "$(dirname "$MODULE")" "$(basename "$MODULE")"
+          tar -tvf "$RUNNER_TEMP/build/wasm-$VERSION-$ARCH.tar"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: build-wasm-${{ matrix.version }}-${{ matrix.arch }}
+          path: ${{ runner.temp }}/build/wasm-${{ matrix.version }}-${{ matrix.arch }}.tar
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish
+    needs: [plan, build-emmylua, build-wasm]
+    if: >-
+      !cancelled() && needs.plan.result == 'success'
+      && needs.plan.outputs.publish != '[]'
+      && (needs.build-emmylua.result == 'success' || needs.build-emmylua.result == 'skipped')
+      && (needs.build-wasm.result == 'success' || needs.build-wasm.result == 'skipped')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      # Create the releases and push the branch index.
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Not needed when the releases are only to be indexed.
+      - if: needs.plan.outputs.pack == 'true'
+        uses: ./.github/actions/setup-tt
+
+      - if: needs.plan.outputs.builds != '[]'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: build-*
+          path: ${{ runner.temp }}/builds
+          merge-multiple: true
+
+      - name: Publish the releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PUBLISH: ${{ needs.plan.outputs.publish }}
+        run: |
+          failed=0
+          while read -r rock version; do
+            echo "::group::$rock $version"
+            scripts/publish.sh "$rock" "$version" "$RUNNER_TEMP/builds" || failed=1
+            echo "::endgroup::"
+          done < <(jq -r '.[] | "\(.rock) \(.version)"' <<<"$PUBLISH")
+          exit "$failed"
+
+      # Those published, even if others failed.
+      - name: Index the releases
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PUBLISH: ${{ needs.plan.outputs.publish }}
+        run: |
+          mapfile -t tags < <(jq -r '.[].tag' <<<"$PUBLISH")
+          scripts/index-push.sh "${tags[@]}"

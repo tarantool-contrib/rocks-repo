@@ -1,0 +1,40 @@
+name: watch
+
+# Opens a pull request adding each new release of tarantool-wasm-rs and
+# EmmyLua to its table, with the checksums GitHub reports for its assets.
+# Nothing is published until a maintainer merges it.
+
+on:
+  schedule:
+    - cron: "41 5 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: watch
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  watch:
+    name: Watch
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      # Push the branches of the pull requests and open them.
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Open pull requests for new releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: scripts/watch.sh
