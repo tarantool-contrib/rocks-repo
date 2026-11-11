@@ -47,9 +47,9 @@ tt reads `tt-rocks-index.json` there, so a tt that knows the index is needed;
   `all` for the `.all` rock of a package with no native file, or `src` for
   the source rock of a package. A release is made as a draft, its assets
   uploaded and checked, then published.
-- **`index`**: one file, `tt-rocks-index.json`, written by the publish and
-  yank workflows only. For each version-revision of each rock it lists the
-  URL and the sha256 of the rockspec and of the rock of each arch, and
+- **`index`**: one file, `tt-rocks-index.json`, written by the publish
+  workflow only. For each version-revision of each rock it lists the URL and
+  the sha256 of the rockspec and of the rock of each arch, and
   `"yanked": true` for a [yanked](#yanking-a-version) one:
 
   ```json
@@ -146,7 +146,8 @@ dependencies are the ranges of `[dependencies]`, the source is
 - `releases.json`, the versions: `ref` is what the build checks out, the
   tag `v<version>` as a rule; `version` is the LuaRocks version tt names the
   package by at that ref (the tag `v1.2.0-rc1` is `1.2.0.rc1`, a `VERSION`
-  file overrides the tag); `rock_revision` the revision of the rock.
+  file overrides the tag); `rock_revision` the revision of the rock;
+  `yanked`, the reason, of a [yanked](#yanking-a-version) version.
 
   ```json
   {"1.2.0": {"version": "1.2.0", "rock_revision": 1, "ref": "v1.2.0"}}
@@ -190,11 +191,22 @@ newest of the table; a pre-release tag is added by hand, with its ref.
 
 ## Yanking a version
 
-The yank workflow, run by hand with a rock and a version-revision
-(`0.25.1-1`) and a reason, marks its entry of the index `"yanked": true` in
-one commit to `index` (`scripts/yank.sh`). Its release and its rocks stay: a
-project that locked it still installs it, but tt resolves no new dependency
-to it. Yanking is the one change an entry of the index ever has.
+Give the version in its table the reason it is yanked for, in a pull
+request:
+
+```json
+{"0.25.1": {"version": "0.25.1", "rock_revision": 1, "…": "…",
+            "yanked": "Crashes on load: use 0.26.0."}}
+```
+
+Once it is merged, the publish workflow marks the entry of the
+version-revision in the index `"yanked": true`, and the reason goes into
+the message of the commit. Its release and its rocks stay: a project that
+locked it still installs it, but tt resolves no new dependency to it.
+Removing `yanked` from the table unyanks it: the flag of the index mirrors
+the table. Being yanked is the one change a published version may have in
+the table, and its entry in the index; an older revision of the version,
+which the table no longer names, keeps its flag.
 
 ## Workflows
 
@@ -203,25 +215,24 @@ to it. Yanking is the one change an entry of the index ever has.
   from source (by cargo on each target: EmmyLua with cargo-zigbuild for glibc
   2.17 on Linux, wasm the way tarantool-wasm-rs builds its releases; a package
   by `tt package pack` on each target), packed by `tt <rock> rock`, published
-  as a release, and added to the index in one commit to `index`. A package
-  that fails to build fails its own publication only. A release a failed run
-  published is indexed by the next run; a draft a failed run left is deleted
-  and made anew.
+  as a release, and added to the index in one commit to `index`, which also
+  yanks and unyanks the entries as the tables say. A package that fails to
+  build fails its own publication only. A release a failed run published is
+  indexed by the next run; a draft a failed run left is deleted and made
+  anew.
 - **check** (pull requests; nightly): every published release is in the
-  index, every URL of the index answers with the sha256 it lists, and each
-  rockspec is the one inside the rocks. On a pull request, also the tables,
-  the scripts, and a dry pack of the versions it adds that are packed from
-  upstream assets: nothing is built from source on a pull request.
+  index, every URL of the index answers with the sha256 it lists, each
+  rockspec is the one inside the rocks, and the yanked flags are those of the
+  tables (on a pull request, those it changes are reported). On a pull
+  request, also the tables, the scripts, and a dry pack of the versions it
+  adds that are packed from upstream assets: nothing is built from source on
+  a pull request.
 - **watch** (daily): a pull request for each new release of EmmyLua and
   tarantool-wasm-rs and each new tag of a package.
-- **yank** (by hand): yanks a version-revision.
 
 The tt that packs the rocks is built from the commit `ref` of
 [`.github/actions/setup-tt/action.yml`](.github/actions/setup-tt/action.yml)
-names. The yank workflow runs in the group of the publish workflow, one run
-at a time writing `index`; GitHub keeps one run of a group waiting and
-cancels any other, so a yank waiting behind a run of publish may be cancelled
-by the next one, and is then to be run again.
+names.
 
 ## For the administrators
 
@@ -229,5 +240,5 @@ by the next one, and is then to be run again.
   release can then change neither its assets nor its tag.
 - Let GitHub Actions create pull requests (Settings, Actions, General,
   Workflow permissions), for the watch workflow.
-- Let the publish and yank workflows push the branch `index`: if a ruleset
-  covers it, let GitHub Actions bypass it.
+- Let the publish workflow push the branch `index`: if a ruleset covers it,
+  let GitHub Actions bypass it.

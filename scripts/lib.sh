@@ -189,6 +189,43 @@ index_has() {
 	jq -e --arg r "$2" --arg k "$3" '.repository[$r][$k] != null' "$1" > /dev/null
 }
 
+# yank_changes FILE prints, a JSON object a line, the entries of the index
+# FILE whose yanked flag the tables change: {rock, key, yanked, reason}. A
+# version of a table is yanked when its entry has "yanked", the reason, and
+# the flag of the entry of its version-revision mirrors that: true while the
+# table has it, none once it is removed. The entries of a revision the
+# table no longer names keep theirs.
+yank_changes() {
+	local rock
+	for rock in $(rocks); do
+		jq -c --arg r "$rock" --slurpfile index "$1" '
+			to_entries[] | .value as $e | "\(.key)-\($e.rock_revision)" as $k
+			| $index[0].repository[$r][$k] as $entry
+			| select($entry != null)
+			| (($e.yanked // "") != "") as $yanked
+			| select(($entry.yanked // false) != $yanked)
+			| {rock: $r, key: $k, yanked: $yanked, reason: ($e.yanked // "")}
+		' "$(table "$rock")"
+	done
+}
+
+# apply_yanks FILE sets the yanked flags of the index FILE as the tables say
+# (yank_changes) and prints, a line each, what it changed: "yank ROCK KEY:
+# REASON" or "unyank ROCK KEY".
+apply_yanks() {
+	local changes change tmp
+	mapfile -t changes < <(yank_changes "$1")
+	tmp=$(mktemp "$1.XXXXXX")
+	for change in "${changes[@]}"; do
+		jq --argjson c "$change" '
+			if $c.yanked then .repository[$c.rock][$c.key].yanked = true
+			else del(.repository[$c.rock][$c.key].yanked) end' "$1" > "$tmp"
+		cat "$tmp" > "$1"
+		jq -r 'if .yanked then "yank \(.rock) \(.key): \(.reason)" else "unyank \(.rock) \(.key)" end' <<<"$change"
+	done
+	rm -f "$tmp"
+}
+
 # remote prints the git remote of the repository.
 remote() {
 	printf '%s\n' "${ROCKS_REMOTE:-https://github.com/${GH_REPO:?GH_REPO names the repository}.git}"

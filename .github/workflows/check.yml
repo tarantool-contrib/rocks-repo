@@ -29,13 +29,19 @@ jobs:
         with:
           persist-credentials: false
 
+      # The tables of a pull request may yank what the index has not yet:
+      # the publish workflow does once it is merged.
       - name: Check the index
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
           scripts/fetch-index.sh "$RUNNER_TEMP/index.json"
-          scripts/check.sh "$RUNNER_TEMP/index.json"
+          pending=()
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            pending=(--pending)
+          fi
+          scripts/check.sh "${pending[@]}" "$RUNNER_TEMP/index.json"
 
   lint:
     name: Tables and scripts

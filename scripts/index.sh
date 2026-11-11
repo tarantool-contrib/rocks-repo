@@ -8,9 +8,9 @@
 # digests of the assets) and the sizes of the rocks. An arch is a platform,
 # OS-CPU, or all for an .all rock, or src for a source rock. A
 # version-revision the index has already is refused: an entry, once
-# written, never changes, but for being yanked (scripts/yank.sh). The file
-# is written deterministically: keys of rocks and versions sorted,
-# artifacts by arch, entries in the order of the format.
+# written, never changes, but for being yanked (scripts/index-push.sh).
+# The file is written deterministically: keys of rocks and versions
+# sorted, artifacts by arch, entries in the order of the format.
 # shellcheck source=lib.sh
 source "$(dirname "$0")/lib.sh"
 
