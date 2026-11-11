@@ -1,0 +1,2 @@
+# The scripts source scripts/lib.sh from their own directory.
+source-path=SCRIPTDIR
