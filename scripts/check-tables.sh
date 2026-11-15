@@ -128,7 +128,10 @@ for rock in $(rocks); do
 		 else empty end),
 		(if .source_rock == null or (.source_rock | type) == "boolean" then empty
 		 else "source_rock is no boolean" end),
-		(keys - ["repository", "path", "tarantool", "source_rock"] | .[] | "no such field: \(.)")
+		(if .product == null or ((.product | type) == "string" and (.product | test("^[a-z][a-z0-9-]*$")))
+		 then empty else "product is not the name of a product of the manifest" end),
+		(keys - ["repository", "path", "tarantool", "source_rock", "product"] | .[]
+		 | "no such field: \(.)")
 		end | "'"$rock"'/package.json: " + .'
 
 	check "$root/$rock/targets.json" '
