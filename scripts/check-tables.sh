@@ -130,7 +130,9 @@ for rock in $(rocks); do
 		 else "source_rock is no boolean" end),
 		(if .product == null or ((.product | type) == "string" and (.product | test("^[a-z][a-z0-9-]*$")))
 		 then empty else "product is not the name of a product of the manifest" end),
-		(keys - ["repository", "path", "tarantool", "source_rock", "product"] | .[]
+		(if .auto_merge == null or (.auto_merge | type) == "boolean" then empty
+		 else "auto_merge is no boolean" end),
+		(keys - ["repository", "path", "tarantool", "source_rock", "product", "auto_merge"] | .[]
 		 | "no such field: \(.)")
 		end | "'"$rock"'/package.json: " + .'
 
