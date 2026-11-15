@@ -1,0 +1,9 @@
+{
+  "targets": [
+    {
+      "arch": "all",
+      "os": "ubuntu-24.04",
+      "container": ""
+    }
+  ]
+}
