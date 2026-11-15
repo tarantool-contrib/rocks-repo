@@ -1,0 +1,6 @@
+{
+  "repository": "https://github.com/tarantool-contrib/tarantool-protobuf",
+  "product": "c",
+  "source_rock": true,
+  "auto_merge": true
+}

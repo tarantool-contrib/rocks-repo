@@ -10,13 +10,14 @@
 # scripts/package-tarantool.sh on PATH. The project is CHECKOUT/PATH, PATH
 # being that of ROCK/package.json; tt package pack
 # builds it and packs the rock with --format rock, or the source rock with
-# --format rock-src for the arch src, and --revision the rock_revision of
-# VERSION. The rock tt makes has to be the one the tables name: tt names it
-# by the version of the package, from its tag v* at the ref or its VERSION
-# file, and by the arch of the host, or all for a package with no native
-# file. Another version (the tag is not that of VERSION, the tree is dirty)
-# or another arch (targets.json says all of a package with a native file,
-# say) fails.
+# --format rock-src for the arch src, --revision the rock_revision of
+# VERSION, and --product the product of ROCK/package.json, if it names one:
+# the product whose [products.NAME].rock is ROCK. The rock tt makes has to
+# be the one the tables name: tt names it by the version of the package,
+# from its tag v* at the ref or its VERSION file, and by the arch of the
+# host, or all for a package with no native file. Another version (the tag
+# is not that of VERSION, the tree is dirty) or another arch (targets.json
+# says all of a package with a native file, say) fails.
 #
 # $TT, default tt, packs.
 # shellcheck source=lib.sh
@@ -47,15 +48,22 @@ fi
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
-(cd "$project" && "$tt" package pack --format "$format" --revision "$revision" --out "$work/pack") >&2
+args=(--format "$format" --revision "$revision" --out "$work/pack")
+product=$(package "$rock" product)
+if [ -n "$product" ]; then
+	args+=(--product "$product")
+fi
+(cd "$project" && "$tt" package pack "${args[@]}") >&2
 
-# tt indexes the directory too: the manifests are left out, the index stands
-# for them.
-made=$(cd "$work/pack" && find . -mindepth 1 -maxdepth 1 ! -name 'manifest*' | sed 's|^\./||' | sort)
+# tt indexes the directory too, with the LuaRocks manifests and a rock index
+# of its own, tt-rocks-index.json: they are left out, the index of this
+# repository stands for them.
+made=$(cd "$work/pack" && find . -mindepth 1 -maxdepth 1 ! -name 'manifest*' ! -name tt-rocks-index.json |
+	sed 's|^\./||' | sort)
 want=$(printf '%s\n' "$tag.$arch.rock" "$tag.rockspec" | sort)
 if [ "$made" != "$want" ]; then
 	ref=$(jq -r --arg v "$version" '.[$v].ref' "$(table "$rock")")
-	die "tt packed"$'\n'"$made"$'\n'"rather than"$'\n'"$want"$'\n'"The package at $ref, of a clean tree, is to be of the version $version, and its rock of the arch $arch."
+	die "tt packed"$'\n'"$made"$'\n'"rather than"$'\n'"$want"$'\n'"The package at $ref, of a clean tree, is to be of the version $version, its rock of the arch $arch, and that of its product the rock $rock."
 fi
 unzip -p "$work/pack/$tag.$arch.rock" "$tag.rockspec" | cmp -s - "$work/pack/$tag.rockspec" ||
 	die "the rockspec in $tag.$arch.rock is not the $tag.rockspec tt wrote beside it"

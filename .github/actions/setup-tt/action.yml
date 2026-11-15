@@ -8,11 +8,12 @@ inputs:
   ref:
     description: The commit of tarantool/tt to build.
     # The tt that packs every rock: the one setting of it. A commit of v3
-    # with tt emmylua rock and tt wasm rock --from (tarantool/tt#1446) and
-    # tt package pack --format rock and rock-src (tarantool/tt#1449).
+    # with tt emmylua rock and tt wasm rock --from (tarantool/tt#1446),
+    # tt package pack --format rock and rock-src (tarantool/tt#1449), and
+    # the rocks of products, [products.NAME].rock, packed by --product.
     # Moving it changes how the rocks of versions not yet published are
     # packed, never those already published.
-    default: f54550960b703c8f90aca99b64cb7ebb76ad463a
+    default: 9002f16227e282d165c766caad5e7a878c4ebb82
 
 outputs:
   commit:

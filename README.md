@@ -13,7 +13,19 @@ https://raw.githubusercontent.com/tarantool-contrib/rocks-repo/index/
 
 Each version of these has a binary rock for `linux-x86_64`, `linux-aarch64`
 and `macosx-aarch64`. Any other rock here is a [package](#packages): a tt
-package, built and packed by `tt package pack`. Once published, a rock never
+package, built and packed by `tt package pack`. The packages of
+[tarantool-contrib](https://github.com/tarantool-contrib):
+
+| Rock | What it is | Rocks |
+| --- | --- | --- |
+| `memcached` | [memcached](https://github.com/tarantool-contrib/memcached): the memcached text and meta protocol server for Tarantool 3.9 and newer | `linux-x86_64`, `linux-aarch64`, `src` |
+| `tarantool-avro` | [tarantool-avro](https://github.com/tarantool-contrib/tarantool-avro): Apache Avro in pure Lua, `avro` | `all` |
+| `pregel` | [pregel](https://github.com/tarantool-contrib/pregel): the Pregel graph processing model in pure Lua | `all` |
+| `tarantool-protobuf` | [tarantool-protobuf](https://github.com/tarantool-contrib/tarantool-protobuf): the runtime of Protocol Buffers and gRPC in pure Lua, `pb` | `all` |
+| `tarantool-protobuf-c` | the optional C runtime of tarantool-protobuf, `pb.c_runtime`, beside `tarantool-protobuf` of its version, for Tarantool 3.5 and newer | `linux-x86_64`, `linux-aarch64`, `macosx-aarch64`, `src` |
+
+Their versions are those of their tags `vX.Y.Z`, which they are published
+from within the hour. Once published, a rock never
 changes; a new build of a version is a new rock revision.
 
 ## Using the rocks
@@ -111,7 +123,7 @@ repository on GitHub. `tt package pack --format rock` builds it at the tag of
 a version and packs it as a rock, its rockspec made from the manifest: the
 dependencies are the ranges of `[dependencies]`, the source is
 `[package].repository` at the tag. Its directory here, named as
-`[package].name`, holds:
+`[package].name`, or as the rock of a product (below), holds:
 
 - `package.json`, what it is and how it is built:
 
@@ -119,15 +131,29 @@ dependencies are the ranges of `[dependencies]`, the source is
   {
     "repository": "https://github.com/example/hello",
     "path": "lua",
-    "source_rock": true
+    "product": "c",
+    "source_rock": true,
+    "auto_merge": true
   }
   ```
 
   `repository` is the repository on GitHub, `path` the directory of the
-  project in it if it is not the root, and `source_rock`, false by default,
-  whether the source rock (`tt package pack --format rock-src`, arch `src`)
-  is published too: a tt that finds no rock of its platform or `all` builds
-  the package from it, so it serves the platforms no target builds for.
+  project in it if it is not the root; `product` the product of the
+  manifest whose rock this is, `[products.NAME]` with `rock` the name of
+  this directory, packed by `tt package pack --product NAME`, the default
+  product by default; `source_rock`, false by default, whether the source
+  rock (`tt package pack --format rock-src`, arch `src`) is published too: a
+  tt that finds no rock of its platform or `all` builds the package from
+  it, so it serves the platforms no target builds for; and `auto_merge`,
+  false by default, whether the pull request the watch workflow opens for a
+  new tag merges by itself once the checks pass (see
+  [the administrators](#for-the-administrators)), publishing the tag with
+  no review here: for a repository whose tags are reviewed where they are
+  made, such as those of tarantool-contrib.
+
+  A package of several rocks has a directory for each: tarantool-protobuf
+  is `tarantool-protobuf`, its default product, and `tarantool-protobuf-c`,
+  its product `c`, from the one repository and its tags.
 - `targets.json`, where its rocks are built: a target per platform for a
   package with a native file (a C or Rust module, a program), or the one
   target of arch `all` for a package with none, whose `.all` rock installs
@@ -166,7 +192,13 @@ ones it may not load on the older. `>=3.3.0,<4.0.0`, `~> 3.3` and `>=3.3` are
 built against 3.3.0. A package is to declare its lower bound, as a release
 of 3.0.0 or newer by `>=`: `*`, `<4.0.0` or `>3.3.0` fails the build, and so
 does `[ee]`, Tarantool Enterprise, of which there is no SDK here
-(`scripts/package-tarantool.sh`). tt installs that Tarantool, prebuilt on
+(`scripts/package-tarantool.sh`). A rock that needs a newer Tarantool than
+the package declares a dependency on `tarantool`, in `[dependencies]` or a
+component of its product, which tt puts into its rockspec: its higher
+lower bound is the one its rocks are built against. The C runtime of
+tarantool-protobuf, of the module API of 3.5.0, is built against 3.5.0 by
+`tarantool = ">=3.5.0"` of its component, while the package and its Lua
+rock run on 3.1.0. tt installs that Tarantool, prebuilt on
 Linux, built from source on macOS, and the install is cached by the release
 and the runner: each is installed, or built, once.
 
@@ -180,13 +212,19 @@ no other, their rockspec the same in each and beside each, of the package
 and the version-revision.
 
 Packing a package as a rock needs a tt with `tt package pack --format rock`
-and `rock-src`: v3 since tarantool/tt#1449, which the commit
+and `rock-src`, v3 since tarantool/tt#1449, and the rocks of products,
+`[products.NAME].rock`: the commit
 [`.github/actions/setup-tt/action.yml`](.github/actions/setup-tt/action.yml)
-names is of.
+names is of such a v3.
 
 The watch workflow reads the tags `vMAJOR.MINOR.PATCH` of the repository of a
-package with git, and opens a pull request for each one newer than the
-newest of the table; a pre-release tag is added by hand, with its ref.
+package with git, every hour, and opens a pull request for each one newer
+than the newest of the table, or the newest tag alone when the table has no
+version; a pre-release tag is added by hand, with its ref. To release a
+package, tag it: `git tag v0.1.0 && git push origin v0.1.0`. Its pull
+request is opened within the hour; with `auto_merge` it merges once the
+checks pass and the publish workflow publishes the rocks, without it a
+maintainer merges it.
 
 ## Yanking a version
 
@@ -226,8 +264,10 @@ which the table no longer names, keeps its flag.
   request, also the tables, the scripts, and a dry pack of the versions it
   adds that are packed from upstream assets: nothing is built from source on
   a pull request.
-- **watch** (daily): a pull request for each new release of EmmyLua and
-  tarantool-wasm-rs and each new tag of a package.
+- **watch** (hourly): a pull request for each new release of EmmyLua and
+  tarantool-wasm-rs and each new tag of a package; that of a package with
+  `auto_merge` merges itself once the checks pass, when the pull requests
+  are the GitHub App's.
 
 The tt that packs the rocks is built from the commit `ref` of
 [`.github/actions/setup-tt/action.yml`](.github/actions/setup-tt/action.yml)
@@ -241,3 +281,20 @@ names.
   Workflow permissions), for the watch workflow.
 - Let the publish workflow push the branch `index`: if a ruleset covers it,
   let GitHub Actions bypass it.
+- For the pull requests of the watch workflow to run the checks, and those
+  of the packages with `auto_merge` to merge by themselves: a pull request
+  the `GITHUB_TOKEN` of a workflow opens runs no workflow, and its merge
+  would run no publish workflow either.
+  - Create a GitHub App of the organization, with no webhook, of the
+    repository permissions Contents and Pull requests, read and write, and
+    install it on this repository alone.
+  - Give its Client ID as the variable `ROCKS_BOT_CLIENT_ID` and a private
+    key of it as the secret `ROCKS_BOT_PRIVATE_KEY` of this repository
+    (Settings, Secrets and variables, Actions). Without them the watch
+    workflow opens its pull requests with the `GITHUB_TOKEN`, as before.
+  - Allow auto-merge (Settings, General, Pull Requests) and the rebase
+    merge.
+  - Require the checks `Index` and `Tables and scripts` of the branch
+    `master` by a ruleset (Settings, Rules, Rulesets). With no rule that
+    requires a check, the watch workflow sets no pull request to merge by
+    itself: it would merge at once, unchecked.

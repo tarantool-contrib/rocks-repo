@@ -1,0 +1,5 @@
+{
+  "repository": "https://github.com/tarantool-contrib/memcached",
+  "source_rock": true,
+  "auto_merge": true
+}

@@ -20,6 +20,14 @@
 #
 # The branch of a pull request, watch/ROCK-VERSION, is made from HEAD of
 # the checkout and pushed to the remote.
+#
+# WATCH_RUNS_CHECKS=true says the token, $GH_TOKEN, is one whose pull
+# requests run the workflows, a token of a GitHub App: the check workflow
+# runs on them. A pull request of a package whose package.json says
+# "auto_merge": true is then set to merge itself once the checks the
+# rules of master require pass; with no such rule, it is not set, since it
+# would merge at once, unchecked. With the GITHUB_TOKEN of a workflow,
+# whose pull requests run nothing, no pull request merges itself.
 # shellcheck source=lib.sh
 source "$(dirname "$0")/lib.sh"
 
@@ -57,6 +65,14 @@ floor() {
 	jq -r --arg p "$(prefix "$1")" 'to_entries[]
 		| select(((.value.platforms // []) != []) or .value.ref == $p + .key) | .key' \
 		"$(table "$1")" | sort -V | tail -n 1
+}
+
+# checks_required succeeds when a rule of the branch master requires a
+# status check, without which a pull request set to merge by itself merges
+# at once.
+checks_required() {
+	gh api "repos/$GH_REPO/rules/branches/master" \
+		--jq 'any(.[]; .type == "required_status_checks")' 2> /dev/null | grep -qx true
 }
 
 # newer A B succeeds when the version A is newer than B.
@@ -127,13 +143,37 @@ for item in "${new[@]}"; do
 	rgit -C "$work/tree" push -q --force "$(remote)" "HEAD:refs/heads/$branch"
 	git -C "$root" worktree remove --force "$work/tree"
 
-	cat > "$work/body" <<-EOF
-		Adds $rock $version, $url, to \`$rock/releases.json\`.
+	auto=false
+	if [ "$(kind "$rock")" = package ] && [ "$(package "$rock" auto_merge)" = true ] &&
+		[ "${WATCH_RUNS_CHECKS:-}" = true ]; then
+		if checks_required; then
+			auto=true
+		else
+			say "warning: $rock $version: no rule of master requires a check; not merging it by itself"
+		fi
+	fi
 
-		$how Review $review before merging: once this is merged, the publish workflow publishes \`$rock-$version-1\`.
-
-		Opened by the watch workflow. Pull requests it opens run no checks; close and reopen this one to run them.
-	EOF
+	# shellcheck disable=SC2016 # The backquotes are of Markdown.
+	{
+		printf 'Adds %s %s, %s, to `%s/releases.json`.\n\n' "$rock" "$version" "$url" "$rock"
+		if $auto; then
+			printf '%s It merges itself once the checks pass: once it is merged, the publish workflow publishes `%s-%s-1`.\n\n' \
+				"$how" "$rock" "$version"
+			printf 'Opened by the watch workflow; `%s/package.json` says `"auto_merge": true`.\n' "$rock"
+		else
+			printf '%s Review %s before merging: once this is merged, the publish workflow publishes `%s-%s-1`.\n\n' \
+				"$how" "$review" "$rock" "$version"
+			if [ "${WATCH_RUNS_CHECKS:-}" = true ]; then
+				printf 'Opened by the watch workflow.\n'
+			else
+				printf 'Opened by the watch workflow. Pull requests it opens run no checks; close and reopen this one to run them.\n'
+			fi
+		fi
+	} > "$work/body"
 	gh pr create --base master --head "$branch" --title "$rock: add $version" --body-file "$work/body"
+	if $auto && ! gh pr merge "$branch" --auto --rebase; then
+		say "warning: $rock $version: the pull request cannot merge by itself; merge it by hand"
+		failed=1
+	fi
 done
 exit "$failed"
